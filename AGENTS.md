@@ -12,7 +12,13 @@
 AI 在非交互 shell 里跑本仓 Python：`uv run`，或 `uv sync` 之后用 `.venv\Scripts\python.exe`，并设 `PYTHONUTF8=1`。
 
 不给本仓发明命令行参数。长驻服务从仓库根 `uv run python start.py`（一键）启动，或分别 `uv run python -m embed.server` / `uv run python -m online.server`，以及 `cd frontend && npm run dev`。不要 `python embed/server.py` 或 `python online/server.py`（sys.path 会指到子目录）。命令行脚本只当调试。
-问答页视觉规范在 `frontend/DESIGN.md`，不在仓库根。待做勾选在 `docs/TODO.md`。
+问答页视觉规范在 `frontend/DESIGN.md`，不在仓库根。待做方向在 `docs/todo.md`。
+
+## todo.md
+
+`docs/todo.md` 只收本阶段打算做的方向，不是工单、不是架构。明确不做 / 暂时不做以 `architecture.md` 为准，不要把那些抄进 todo。
+「下一步」只能人点名。未在对话里被点名要做的那一条，不得按清单改代码；可以读文件后建议把哪句放进「下一步」、或建议新方向。
+允许：勾选已完成的项；在三类节里补一句可能的后续方向。改已有措辞或删行必须先问。不要把已勾项长期堆着——等人说清时再一起清。
 
 ## 端口从 8030 连号
 
@@ -27,6 +33,16 @@ AI 在非交互 shell 里跑本仓 Python：`uv run`，或 `uv sync` 之后用 `
 入库、评测、全量 pytest 不许在前台干等：后台作业起、要停就停作业本身；前台调用的 timeout 不超过 120 秒。看不到进度的长任务按卡死处理——入库每批都打进度（`EMBED_REQUEST_BATCH`）。
 
 中止一轮或停掉作业之后，必须核对有没有留下 python 残留进程：中止只杀 shell，孙进程会活下来。2026-10-08 有一个被中止的 `pytest tests -q` 空转一小时，烧掉 3400s CPU，而同一命令正常只要 21s。
+
+## 外部模型与重依赖
+
+要在本机验证一个外部模型，先给方案再动手：**官方部署文档链接、权重在哪个仓库与哪些文件、下载命令、最小验证请求**，等用户说可以，再下权重。2026-10-25 没问就拉了 141MB 仓库 + 1.7GB 底座，沙箱里三次断流重下、约 25 分钟，最后这个尺寸还被判不适用。
+
+- 权重不自己下。沙箱下载既慢又不可靠（单连接 0.6MB/s，CDN 会 `SSL EOF` / `IncompleteRead` 断流），下什么、下到哪、要不要下由用户定。
+- 重依赖不自己装。torch 这类 GB 级依赖装之前必须问；已有 GPU 环境先确认能否复用，不要默认装 CPU 版——那次装了 2.94GB 的 CPU torch，3060 全程没用上。
+- GitHub 直连已知不稳：`git clone` 超时或 5 分钟没有字节落地就放弃，改成要 tarball / 镜像，或请用户给，不要换着方法连试。
+- 一步卡住超过 10 分钟就停手汇报；不要写第二版下载器、不要反复重试。说清「卡在哪、还差什么、需要你做什么」。
+- 先跑通最小闭环（假端点、`--self-test`）再碰真实权重；环境问题没解决时不继续拉数据。
 
 ## 测试落点
 

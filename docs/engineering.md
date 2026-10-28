@@ -44,15 +44,15 @@
 
 ### 出了什么问题
 
-项目根已经只在 `conf/base.py` 推算，启动文件不要再算一遍。可是 `scripts/` 里的入库、评测一打开，仍常见几行「先把上一级目录插进 `sys.path`，再 import conf」。看起来像每个脚本偷偷写了第二份 ROOT。
+项目根已经只在 `conf/base.py` 推算，启动文件不要再算一遍。可是 `scripts/` 里的入库、评测一打开，仍常见几行「先把仓库根插进 `sys.path`，再 import conf」。看起来像每个脚本偷偷写了第二份 ROOT。
 
 ### 当时的情况
 
-长驻服务从仓库根 `python -m online.server` / `python -m embed.server` 启动，解释器把仓库根放进搜索路径，`import conf` 直接成功，`base.py` 再保证 ROOT 在路径里。脚本习惯写成 `python scripts/ingest.py`，从子目录启动。
+长驻服务从仓库根 `python -m online.server` / `python -m embed.server` 启动，解释器把仓库根放进搜索路径，`import conf` 直接成功，`base.py` 再保证 ROOT 在路径里。脚本习惯写成 `python scripts/ingest/ingest.py`，从子目录启动。
 
 ### 为什么会这样
 
-这是解释器怎么定位脚本，不是根常量写了两份。`python scripts/foo.py` 时，`sys.path[0]` 是 `scripts/`，此时还 import 不到 `conf`，里面的 ROOT 用不上。盘符 ROOT 若再写进脚本，换目录又坏一次。
+这是解释器怎么定位脚本，不是根常量写了两份。`python scripts/ingest/ingest.py` 时，`sys.path[0]` 是 `scripts/ingest/`，此时还 import 不到 `conf`，里面的 ROOT 用不上。盘符 ROOT 若再写进脚本，换目录又坏一次。
 
 ### 试过哪些办法
 
@@ -61,7 +61,7 @@
 
 ### 最后怎么解决
 
-从仓库根 `python -m` 起的层包入口直接 `import conf`。`scripts/` 里只插「脚本的上一级目录」以便找到配置包，不要在脚本里再赋盘符。插完立刻从 `conf/base.py` 读 ROOT。层模块不要自己改搜索路径，假定入口已经做过。项目根仍然只有一处推算。
+从仓库根 `python -m` 起的层包入口直接 `import conf`。`scripts/` 里只插仓库根以便找到配置包（场景子目录是上三级），不要在脚本里再赋盘符。插完立刻从 `conf/base.py` 读 ROOT。层模块不要自己改搜索路径，假定入口已经做过。项目根仍然只有一处推算。
 
 ---
 

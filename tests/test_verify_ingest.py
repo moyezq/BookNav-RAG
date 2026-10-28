@@ -2,7 +2,7 @@
 """
 入库验收脚本自身的测试：页精度与丢页分类判据的判别力与误报边界。
 
-职责：锁定 scripts/verify_ingest.py::check_ingest 的页精度判据——
+职责：锁定 scripts/ingest/verify_ingest.py::check_ingest 的页精度判据——
       1. 同一节的子块各自只覆盖一部分页（块级页码）→ 放行；
       2. 相邻 part 都声明整节页、重叠 ≥2 页（P0·5 之前的样子，实测 3.21 倍）→ 报硬问题；
       3. 单页超限被按段切开，同一页出现在相邻两块 → **不报**硬问题，只进「跨块共用的页」指标；
@@ -23,7 +23,7 @@
 
 from __future__ import annotations
 
-from scripts.verify_ingest import check_ingest, check_store_sync
+from scripts.ingest.verify_ingest import check_ingest, check_store_sync
 
 SOURCE = {
     "source": "样本",

@@ -29,7 +29,7 @@
 
 ## 2. 离线 · 入库
 
-人对库入口是 `scripts/ingest.py`：按份先抽取再向量。两层不互相 import，接点是磁盘上的 `chunkable_source.json`。
+人对库入口是 `scripts/ingest/ingest.py`：按份先抽取再向量。两层不互相 import，接点是磁盘上的 `chunkable_source.json`。
 
 ```
 offline/extract/            抽取层：一份源 → 可分块原文。内部 probe → route → 方式 → enrich → collect。  已实现
@@ -67,9 +67,9 @@ online/
 └── generate/               闲聊 / 拒答 / 按命中生成。  已实现
 
 frontend/                   检索门面：独立前端，只调 8031；视觉规范 DESIGN.md。  已实现
-scripts/query_kb.py         单轮调试。  已实现
-scripts/chat_kb.py          多轮同一 session。  已实现
-scripts/eval_kb.py          最小评测口，走 ask_once_core，停在生成前。  已实现
+scripts/ask/query_kb.py     单轮调试。  已实现
+scripts/ask/chat_kb.py      多轮同一 session。  已实现
+scripts/eval/eval_kb.py     最小评测口，走 ask_once_core，停在生成前。  已实现
 ```
 
 ## 4. 共享 · 向量模型服务
@@ -89,8 +89,8 @@ start.py                    一键起 8030 / 8031 / 8032。  已实现
 pyproject.toml              包清单；uv 管理环境。  已实现
 conf/base.py                ROOT、层开关与阈值；在线布尔只剩 USE_REWRITE。  已实现
 conf/config.yaml            相对 data / lancedb 目录名。  已实现
-scripts/ingest.py           人对库入库；--vector-only 只重跑向量层。  已实现
-scripts/verify_ingest.py    只读验收；硬断言未过则非零退出。  已实现
+scripts/ingest/ingest.py    人对库入库；VECTOR_ONLY 只重跑向量层。  已实现
+scripts/ingest/verify_ingest.py  只读验收；硬断言未过则非零退出。  已实现
 tests/                      纯函数与替身，不调 LLM、不调 8030。  已实现
 ```
 

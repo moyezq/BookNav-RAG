@@ -362,7 +362,7 @@ class LanceVectorStore:
             print(
                 "警告：发现半截入库来源 "
                 + "、".join(writing)
-                + "，检索已跳过暂存行；请对该来源重新 python scripts/ingest.py"
+                + "，检索已跳过暂存行；请对该来源重新 python scripts/ingest/ingest.py"
             )
         embedder_name = None
         records = []
@@ -394,7 +394,7 @@ class LanceVectorStore:
         if not records:
             raise FileNotFoundError(
                 f"向量表无可用行（可能只剩半截入库）：{self.db_dir}；"
-                "请重新 python scripts/ingest.py"
+                "请重新 python scripts/ingest/ingest.py"
             )
         return records, embedder_name, dim
 

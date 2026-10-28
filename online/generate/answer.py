@@ -142,7 +142,7 @@ def should_refuse(hits: list[dict], question: str = "", min_score: float | None 
     拒答预留实现：空命中，或最好的向量余弦低于 min_score；词面兜底另有一套判据。
 
     功能：阈值打在余弦上，不打在 RRF 融合分上。
-          min_score 留空则用 conf.REFUSE_MIN_SCORE；`scripts/eval_kb.py --calibrate` 靠它扫阈值，
+          min_score 留空则用 conf.REFUSE_MIN_SCORE；`scripts/eval/eval_kb.py` 顶部 CALIBRATE=True 时靠它扫阈值，
           判据只保留这一份实现，不在评测口重抄一遍。
           向量路过的命中按余弦判；词面兜底的命中没有 vector_score，
           不能沿用「没有向量分就放行」——那等于在最该谨慎的时候关掉拒答开关，

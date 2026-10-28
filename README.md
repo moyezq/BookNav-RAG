@@ -68,7 +68,7 @@ uv run python -m embed.server
 另开终端（同一 uv 环境）：
 
 ```powershell
-uv run python scripts/ingest.py
+uv run python scripts/ingest/ingest.py
 ```
 
 样例是**自造 6 页**短手册（目录 + 5 节正文）。CPU 上 bge-m3 大约几十秒到两分钟；看到 `[向量层] 批 n/N` 即在推进。结束后可关临时向量服务。
@@ -76,7 +76,7 @@ uv run python scripts/ingest.py
 验收（可选）：
 
 ```powershell
-uv run python scripts/verify_ingest.py --source "data/result/demo_handbook/chunkable_source.json" --chunks "data/result/demo_handbook/step4_chunks.json"
+uv run python scripts/ingest/verify_ingest.py
 ```
 
 预期量级：源 **6** 页、目录区间 **5**、入库约 **5** 块、声明页次 / 页并集 **= 1**。
@@ -106,7 +106,7 @@ uv run python start.py
 | 2 | 支架怎么折叠 | 按手册说明折叠步骤；侧栏有引用，带来源与页码（约第 3 页） |
 | 3 | 那它怎么展开？ | 仍围绕支架；应答展开步骤（约第 4 页），侧栏继续有引用 |
 
-域外对照（可选）：问「红烧肉怎么做好吃」→ 宜拒答（文案含「没有足够依据」）。阈值 `REFUSE_MIN_SCORE=0.4`（`conf/base.py`）：曾在车手册库上测得域外余弦约 0.40～0.42，卡在边界；换库后用 `uv run python scripts/eval_kb.py --calibrate` 重定。
+域外对照（可选）：问「红烧肉怎么做好吃」→ 宜拒答（文案含「没有足够依据」）。阈值 `REFUSE_MIN_SCORE=0.4`（`conf/base.py`）：曾在车手册库上测得域外余弦约 0.40～0.42，卡在边界；换库后把 `scripts/eval/eval_kb.py` 顶部 `CALIBRATE` 改成 `True` 再跑该脚本重定。
 
 ---
 
@@ -117,7 +117,7 @@ PDF → 抽取（页 + 印刷目录）→ 分块（块级页码）→ 8030 编�
 问句 → 意图（闲聊/检索/跟进）→ 改写 → 向量+BM25 召回 → 截 TOP_K → 拒答或生成 → 引用
 ```
 
-- **离线**：`scripts/ingest.py` 把抽取层与向量层连起来依次调用；写库成功后才写出 `step4_chunks.json`。目录页用动态扫描，不写死「只读前 N 页」。
+- **离线**：`scripts/ingest/ingest.py` 把抽取层与向量层连起来依次调用；写库成功后才写出 `step4_chunks.json`。目录页用动态扫描，不写死「只读前 N 页」。
 - **在线**：`python -m online.server` 启动时读库建 BM25；问答页只调 `POST /api/ask`。
 - **页码**：子块只声明自己覆盖的页；`verify_ingest.py` 检查「声明页次 / 页并集 = 1」。
 - **过滤**：文档身份 `source` 精确相等就强制筛选（不参与打分）；动态标签 `{field,value}` 按命中条数加权，不强制筛选候选。
@@ -135,7 +135,7 @@ curl -X POST http://127.0.0.1:8031/api/ask -H "Content-Type: application/json" -
 
 响应含答案文本与 citations（来源、页码、原文片段）。浏览器打开 http://127.0.0.1:8031/docs 可交互试。
 
-命令行：`scripts/query_kb.py`（单轮）、`scripts/chat_kb.py`（多轮）。单元测试：`uv pip install pytest` 后 `uv run python -m pytest tests -q`（不调 LLM、不调 8030）。
+命令行：`scripts/ask/query_kb.py`（单轮）、`scripts/ask/chat_kb.py`（多轮）。单元测试：`uv pip install pytest` 后 `uv run python -m pytest tests -q`（不调 LLM、不调 8030）。
 
 ---
 
@@ -151,7 +151,7 @@ book-nav-rag/
 ├── offline/vector/          # 分块、LanceDB
 ├── online/                  # 意图、召回、生成、图编排；入口 python -m online.server
 ├── frontend/                # 问答页（Vite 8032）；视觉规范 DESIGN.md
-├── scripts/                 # 入库、验收、评测、生成样例 PDF
+├── scripts/                 # 入库 ingest/、问答 ask/、评测 eval/；KV 实验与 kev08 在此层
 ├── data/source/             # 待入库 PDF；演示手册进仓，其余不进仓
 └── docs/                    # 内部说明，日常使用不必读
 ```

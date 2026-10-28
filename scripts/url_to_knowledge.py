@@ -1,51 +1,71 @@
-# -*- coding: utf-8 -*-
 """
-把任意 URL / 本地文件变成可检索 kv 列表。
+把一份 URL 或本地文件抽成原文，再按 PIPELINE 走到向量库或 KV 条目后退出。
+不问答、不进抽取 entrance、不进检索。线上主路径与 tests 都不 import 本文件。
 
-状态：KV 实验，还没接进流程。线上主路径与 tests 都不 import 本文件；它只写 `data/result/kv/`
-      和 KV 存储预留实现 `offline/store/kv_store.py`，不进抽取 entrance、不进检索（ADR-0005、ADR-0030）。
-      公开版不保留 KV 实验时，`scripts/backup/` 可整个删掉，其余功能不受影响。
+原理（按系统流程）
+  线上完整链路是：源文件 → 抽取层可分块原文 → 向量层知识块 → 提问口检索。
+  本脚本是 KV 实验支线（ADR-0005、ADR-0030）：anyurl2text 抽原文；
+  PIPELINE=text 接到向量层；PIPELINE=knowledge 抽成 KV 条目写入本地 JSON。
+  不进抽取 entrance、不进召回。公开版不保留 KV 实验时，可删本文件。
 
-职责：KV 实验脚本。anyurl2text 抽原文。PIPELINE=text 接到向量层分块与向量库；PIPELINE=knowledge 抽 KV。
-      生产入库走 scripts/ingest.py。本文件不在抽取层。
-      分块调 offline.vector.chunk。
-      不问答。
-步骤：
-  1. step1_extract_text — POST /extract 或 /extract/file → kv/step1_extract_response.json
-  2. step2_write_extracted — 扫 URL → kv/step2_extracted.txt
-     PIPELINE=text：可分块原文 + 向量层写入 data/lancedb
-  3. step3_split_chunks — 按 kind 分块（调用 offline.vector.chunk）；仅 knowledge
-  4. step4_atomic_extract — 每块 LLM 原子化
-  5. step5_fill_missing_urls — 补漏 URL → kv/step5_atomic_chunks.json
-  6. step6_retrieve_rebuild — 每块 LLM 检索重组 → kv/step6_retrieve_rows.json
-  7. step7_write_kv — rows → kv/step7_knowledge_kv.json 与 kv/kv_store.json
-产出：
-  data/result/kv/step1_extract_response.json
-  data/result/kv/step2_extracted.txt
-  data/result/<source>/chunkable_source.json（text）
-  data/result/kv/step7_knowledge_kv.json
-  data/result/kv/kv_store.json
-前置：anyurl2text 已起；DEEPSEEK_API_KEY 已设环境变量，或写在本仓 .env。text 入库还需先起 python -m embed.server。
-对外：step1_extract_text … step7_write_kv；write_url_chunkable_source；index_url_chunks；call_chat_json。
+  一条 knowledge 样本逐步发生什么：
+    1. POST anyurl2text /extract 或 /extract/file，拿到 content 与 meta.ext。
+    2. 从正文按出现顺序收集 http(s) URL，写下原文。
+    3. 按 kind 分块（offline.vector.chunk.split_text_for_kind）。
+    4. 每块调 LLM，收成细条目 items（index / content，content 须来自原文）。
+    5. 原文里出现过、但 items 尚未覆盖的 URL 补进每一块。
+    6. 每块再调 LLM，把细条目重组成更利于一次命中的检索行。
+    7. {index, content} → {key, value}，写入 step7_knowledge_kv.json 与 kv_store.json。到此停止。
+  一条 text 样本：1～2 步同上；随后写可分块原文并调向量层写入 data/lancedb。不写 KV。
+
+  例子（输入就是下面的常量；换文件或模型会变）
+    FILE_URL 为空、LOCAL_FILE 指向 data/source 下一份能被 anyurl2text 抽正文的文件，
+    PIPELINE=knowledge。
+      期望：data/result/kv/step7_knowledge_kv.json 是非空列表，原文里的 URL 出现在某条 value。
+    同一份源、PIPELINE=text。
+      期望：data/result/<source>/chunkable_source.json 已写，随后写入 data/lancedb；不写 KV。
+
+怎么跑（本文件入口；编号和上面「一条样本」不是同一套）
+  职责：按顶部常量抽一份源，把原理前几步跑完后退出。生产入库走 scripts/ingest/ingest.py。
+  入口步骤：
+    1. extract_text — 调 anyurl2text，对应原理 1。
+    2. write_extracted — 扫 URL、写原文，对应原理 2。
+    3. PIPELINE=text：write_url_chunkable_source + run_vector。
+       PIPELINE=knowledge：split_chunks → atomic_extract → fill_missing_urls
+       → retrieve_rebuild → write_kv（原理 3～7）。
+  输入：下面常量 PIPELINE / FILE_URL / LOCAL_FILE。
+  前置：anyurl2text 已起；DEEPSEEK_API_KEY 在进程环境或本仓 .env。
+        text 入库还需 python -m embed.server。
+  产出：data/result/kv/step1_extract_response.json、step2_extracted.txt；
+        knowledge 另有 step5_atomic_chunks.json、step6_retrieve_rows.json、
+        step7_knowledge_kv.json、kv_store.json；
+        text 另有 data/result/<source>/chunkable_source.json 与 data/lancedb。
+  对外：extract_text … write_kv；write_url_chunkable_source；call_chat_json。
+  跑法：仓库根 uv run python scripts/url_to_knowledge.py
+        到点 RUN_LIMIT_SEC 打全部线程栈并退出（本脚本按块调 LLM，默认 5 分钟不够）。
 """
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
+from typing import Final, Literal, TypedDict
 from urllib.parse import urlparse
 
 import requests
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+import conf  # ROOT 在 conf.base；读 yaml 与 .env
 from conf import (
     ANYURL2TEXT_URL,
     CHAT_API_URL,
     CHAT_MODEL_NAME,
+    MAX_DOC_TOKENS,
     RESULT_DIR as KB_RESULT_DIR,
     SOURCE_DIR,
 )
@@ -57,17 +77,23 @@ from offline.vector.entrance import run_vector
 RESULT_DIR = KB_RESULT_DIR / "kv"
 
 # ========== 按需修改 ==========
-PIPELINE = "knowledge"  # text | knowledge
-FILE_URL = ""  # 有值走 POST /extract
-LOCAL_FILE = SOURCE_DIR / "sample_declaration.txt"
-DEEPSEEK_API_KEY = ""  # 留空：环境变量 / 本仓 .env
-CHAT_TIMEOUT_SEC = 600
-LLM_MAX_TOKENS = 8192  # DeepSeek 非思考默认 8K，不显式给会被静默截断
-EXTRACT_TIMEOUT_SEC = 300
-MAX_DOC_TOKENS = 1800
+PIPELINE: Final[Literal["text", "knowledge"]] = "knowledge"
+FILE_URL: Final[str] = ""  # 有值走 POST /extract
+LOCAL_FILE: Final[Path] = SOURCE_DIR / "sample_declaration.txt"  # 改成 data/source 里实际有的文件
+DEEPSEEK_API_KEY: Final[str] = ""  # 留空：环境变量 / 本仓 .env
+# KV 单块原文更长，不用在线问答的 120s / 2048 tokens
+CHAT_TIMEOUT_SEC: Final[int] = 600
+LLM_MAX_TOKENS: Final[int] = 8192
+EXTRACT_TIMEOUT_SEC: Final[int] = 300
+# 抽原文上限 + 若干次 Chat；到点打栈退出
+RUN_LIMIT_SEC: Final[int] = 1800
 # ==============================
 
-ATOMIC_PROMPT = """
+CHAT_MAX_ATTEMPTS: Final[int] = 3
+URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://\S+")
+DOC_KINDS_IMAGE_INDEX: Final[frozenset[str]] = frozenset({"docx", "pdf", "excel", "xlsx"})
+
+ATOMIC_PROMPT: Final[str] = """
 你是知识库结构化专家。你将收到一份从 __KIND__ 提取出的原文（可能包含 <table>... 结构以及 URL 链接）。
 
 目标：把内容转成“原子化知识点二维表”，便于检索与匹配。
@@ -100,7 +126,7 @@ __URLS__
 __DOC_TEXT__
 """.strip()
 
-RETRIEVE_PROMPT = """
+RETRIEVE_PROMPT: Final[str] = """
 你是知识库“检索结构化”专家。
 
 你将收到：
@@ -137,19 +163,49 @@ __DOC_TEXT__
 """.strip()
 
 
+class KnowledgeItem(TypedDict):
+    index: str
+    content: str
+
+
+class TextData(TypedDict):
+    kind: str
+    urls: list[str]
+    text: str
+
+
+class AtomicChunk(TypedDict):
+    chunk_index: int
+    topic: str
+    text: str
+    items: list[KnowledgeItem]
+
+
+class KvPair(TypedDict):
+    key: str
+    value: str
+
+
+class ChunkableSource(TypedDict):
+    source: str
+    kind: str
+    text: str
+    tags: list[dict]
+
+
 def _resolve_deepseek_api_key() -> str:
-    """DEEPSEEK_API_KEY 常量非空优先，否则进程环境变量或本仓 .env。"""
+    """常量非空优先，否则进程环境变量（含本仓 .env 补进的值）。"""
     return DEEPSEEK_API_KEY.strip() or os.getenv("DEEPSEEK_API_KEY", "").strip()
 
 
 def _strip_thinking(text: str) -> str:
-    """去掉思维链前缀（思考模式若被打开，DeepSeek 仍可能带 </think>）。"""
+    """去掉思维链前缀：思考模式若被打开，DeepSeek 仍可能带 </think>。"""
     if "</think>" in text:
         return text.split("</think>", 1)[1].strip()
     return (text or "").strip()
 
 
-def extract_json_payload(text: str):
+def extract_json_payload(text: str) -> dict | list | None:
     """
     从模型输出里截出第一段能 parse 的 JSON 对象或数组。
 
@@ -182,22 +238,22 @@ def extract_json_payload(text: str):
     return None
 
 
-def call_chat_json(full_prompt: str, stage: str = "") -> dict | list:
+def call_chat_json(full_prompt: str, *, stage: str = "") -> dict | list:
     """
     调 DeepSeek Chat Completions，要求回复能解析成 JSON。
 
-    功能：关思考模式、json_object、显式 max_tokens；最多重试 3 次后截 JSON。
-    应用场景：step4 原子化、step6 检索重组。
+    功能：关思考模式、json_object、显式 max_tokens；最多重试 CHAT_MAX_ATTEMPTS 次后截 JSON。
+    应用场景：atomic_extract、retrieve_rebuild。
     输入：full_prompt — 整段 user 提示词；stage — 日志标签（atomic_1 / retrieve_1）。
     输出：解析后的 dict 或 list。
-    异常：缺 API key、或三次都失败 → RuntimeError。
+    异常：缺 API key、或次数用尽仍失败 → RuntimeError。
     """
     api_key = _resolve_deepseek_api_key()
     if not api_key:
         raise RuntimeError("未配置 DEEPSEEK_API_KEY：设进程环境变量或写入本仓 .env")
 
-    last_err = None
-    for attempt in range(1, 4):
+    last_err: Exception | None = None
+    for attempt in range(1, CHAT_MAX_ATTEMPTS + 1):
         try:
             started = time.perf_counter()
             response = requests.post(
@@ -220,14 +276,14 @@ def call_chat_json(full_prompt: str, stage: str = "") -> dict | list:
             content = payload["choices"][0]["message"]["content"]
             parsed = extract_json_payload(content)
             elapsed = round(time.perf_counter() - started, 2)
-            print(f"模型调用 stage={stage} attempt={attempt} cost={elapsed}s")
+            print(f"模型调用 stage={stage} attempt={attempt} cost={elapsed}s", flush=True)
             if parsed is not None:
                 return parsed
             last_err = RuntimeError("模型输出不是合法 JSON")
-        except Exception as exc:
+        except (requests.RequestException, KeyError, TypeError, ValueError) as exc:
             last_err = exc
-            print(f"模型调用失败 stage={stage} attempt={attempt}: {exc}")
-    raise RuntimeError(f"模型调用失败 stage={stage}, last_error={last_err}")
+            print(f"模型调用失败 stage={stage} attempt={attempt}: {exc}", flush=True)
+    raise RuntimeError(f"模型调用失败 stage={stage}, last_error={last_err}") from last_err
 
 
 def normalize_item_fields(index_text: str, content_text: str) -> tuple[str, str]:
@@ -245,16 +301,16 @@ def normalize_item_fields(index_text: str, content_text: str) -> tuple[str, str]
     return index_text, content_text
 
 
-def clean_atomic_items(items: list[dict]) -> list[dict]:
+def clean_atomic_items(items: list[dict]) -> list[KnowledgeItem]:
     """
     清洗原子化 items：规范化字段，去掉 index 与 content 首行重复。
 
     功能：空条目丢弃；content 第一行若等于 index 则剥掉。
-    应用场景：step4 收 LLM 结果、step5 补 URL 之后。
+    应用场景：atomic_extract 收 LLM 结果、fill_missing_urls 补 URL 之后。
     输入：items — [{index, content}, ...]。
     输出：清洗后的同结构列表。
     """
-    cleaned = []
+    cleaned: list[KnowledgeItem] = []
     for item in items:
         index_text, content_text = normalize_item_fields(
             str(item.get("index", "")),
@@ -275,7 +331,7 @@ def write_result(filename: str, text: str) -> Path:
     把本步产物写到 data/result/kv/<filename>。
 
     功能：确保 kv 目录存在后写 UTF-8 文本。
-    应用场景：各 step 写进磁盘共用。
+    应用场景：各步写进磁盘共用。
     输入：filename — 如 step2_extracted.txt；text — 文件内容。
     输出：写出的路径。
     """
@@ -290,86 +346,18 @@ def collect_urls_from_text(text: str) -> list[str]:
     从原文里按出现顺序去重收集 http(s) 链接。
 
     功能：正则扫 https?://，同一 URL 只留第一次。
-    应用场景：step2 填 urls；step4 提示词要覆盖 URL 列表。
+    应用场景：write_extracted 填 urls；atomic_extract 提示词要覆盖 URL 列表。
     输入：text — 抽取后的原文。
     输出：URL 字符串列表。
     """
-    urls = []
-    seen = set()
-    for url in re.findall(r"https?://\S+", text or ""):
+    urls: list[str] = []
+    seen: set[str] = set()
+    for url in URL_PATTERN.findall(text or ""):
         if url in seen:
             continue
         seen.add(url)
         urls.append(url)
     return urls
-
-
-def step1_extract_text() -> dict:
-    """
-    调 anyurl2text 抽出原文。
-
-    功能：FILE_URL 非空则 POST /extract，否则把 LOCAL_FILE 以 multipart 传到 /extract/file。
-    应用场景：流水线第 1 步。
-    输入：读模块常量 FILE_URL / LOCAL_FILE / ANYURL2TEXT_URL。
-    输出：anyurl2text 的完整 JSON（含 content、meta、error）。
-    异常：HTTP 失败、error 非空、content 为空、meta.ext 缺失 → RuntimeError。
-    """
-    file_url = FILE_URL.strip()
-    if file_url:
-        print(f"[阶段1] POST {ANYURL2TEXT_URL}/extract url={file_url}")
-        response = requests.post(
-            f"{ANYURL2TEXT_URL}/extract",
-            json={"url": file_url},
-            timeout=EXTRACT_TIMEOUT_SEC,
-        )
-    else:
-        local_path = Path(LOCAL_FILE)
-        if not local_path.is_file():
-            raise RuntimeError(f"本地文件不存在: {local_path}")
-        print(f"[阶段1] POST {ANYURL2TEXT_URL}/extract/file file={local_path}")
-        with local_path.open("rb") as file_obj:
-            response = requests.post(
-                f"{ANYURL2TEXT_URL}/extract/file",
-                files={"file": (local_path.name, file_obj)},
-                timeout=EXTRACT_TIMEOUT_SEC,
-            )
-
-    response.raise_for_status()
-    payload = response.json()
-    error = payload["error"]
-    if error:
-        raise RuntimeError(f"anyurl2text 抽取失败: {error}")
-    content = payload["content"]
-    if not str(content).strip():
-        raise RuntimeError("anyurl2text 返回的 content 为空")
-    ext = payload["meta"]["ext"]
-    if not ext:
-        raise RuntimeError("anyurl2text 未给出 meta.ext")
-    print(f"[阶段1] ok ext={ext} chars={len(content)}")
-    extract_path = write_result(
-        "step1_extract_response.json",
-        json.dumps(payload, ensure_ascii=False, indent=2),
-    )
-    print(f"[阶段1] 已写入 {extract_path}")
-    return payload
-
-
-def step2_write_extracted(extract_payload: dict) -> dict:
-    """
-    从抽取结果整理 kind / urls / text 并写进磁盘。
-
-    功能：kind 取 meta.ext；urls 从正文正则扫描；写 step2_extracted.txt。
-    应用场景：流水线第 2 步。PIPELINE=text 时接着写可分块原文并入库。
-    输入：extract_payload — step1 的响应。
-    输出：{kind, urls, text}，给后续分块与知识库步骤。
-    """
-    text = extract_payload["content"]
-    kind = extract_payload["meta"]["ext"]
-    urls = collect_urls_from_text(text)
-    text_data = {"kind": kind, "urls": urls, "text": text}
-    extracted_path = write_result("step2_extracted.txt", text)
-    print(f"[阶段2] 已写入 {extracted_path} kind={kind} chars={len(text)} urls={len(urls)}")
-    return text_data
 
 
 def url_source_name() -> str:
@@ -390,18 +378,89 @@ def url_source_name() -> str:
     return Path(LOCAL_FILE).stem
 
 
-def write_url_chunkable_source(text_data: dict) -> dict:
+def extract_text() -> dict:
+    """
+    调 anyurl2text 抽出原文。
+
+    功能：FILE_URL 非空则 POST /extract，否则把 LOCAL_FILE 以 multipart 传到 /extract/file。
+    应用场景：流水线第 1 步。
+    输入：读模块常量 FILE_URL / LOCAL_FILE / ANYURL2TEXT_URL。
+    输出：anyurl2text 的完整 JSON（含 content、meta、error）。
+    异常：HTTP 失败、error 非空、content 为空、meta.ext 缺失 → RuntimeError。
+    """
+    file_url = FILE_URL.strip()
+    if file_url:
+        print(f"[1] POST {ANYURL2TEXT_URL}/extract url={file_url}", flush=True)
+        response = requests.post(
+            f"{ANYURL2TEXT_URL}/extract",
+            json={"url": file_url},
+            timeout=EXTRACT_TIMEOUT_SEC,
+        )
+    else:
+        local_path = Path(LOCAL_FILE)
+        if not local_path.is_file():
+            raise RuntimeError(f"本地文件不存在: {local_path}")
+        print(f"[1] POST {ANYURL2TEXT_URL}/extract/file file={local_path}", flush=True)
+        with local_path.open("rb") as file_obj:
+            response = requests.post(
+                f"{ANYURL2TEXT_URL}/extract/file",
+                files={"file": (local_path.name, file_obj)},
+                timeout=EXTRACT_TIMEOUT_SEC,
+            )
+
+    response.raise_for_status()
+    payload = response.json()
+    error = payload["error"]
+    if error:
+        raise RuntimeError(f"anyurl2text 抽取失败: {error}")
+    content = payload["content"]
+    if not str(content).strip():
+        raise RuntimeError("anyurl2text 返回的 content 为空")
+    ext = payload["meta"]["ext"]
+    if not ext:
+        raise RuntimeError("anyurl2text 未给出 meta.ext")
+    print(f"[1] ok ext={ext} chars={len(content)}", flush=True)
+    extract_path = write_result(
+        "step1_extract_response.json",
+        json.dumps(payload, ensure_ascii=False, indent=2),
+    )
+    print(f"[1] 已写入 {extract_path}", flush=True)
+    return payload
+
+
+def write_extracted(extract_payload: dict) -> TextData:
+    """
+    从抽取结果整理 kind / urls / text 并写进磁盘。
+
+    功能：kind 取 meta.ext；urls 从正文正则扫描；写 step2_extracted.txt。
+    应用场景：流水线第 2 步。PIPELINE=text 时接着写可分块原文并入库。
+    输入：extract_payload — extract_text 的响应。
+    输出：{kind, urls, text}，给后续分块与知识库步骤。
+    """
+    text = extract_payload["content"]
+    kind = extract_payload["meta"]["ext"]
+    urls = collect_urls_from_text(text)
+    text_data: TextData = {"kind": kind, "urls": urls, "text": text}
+    extracted_path = write_result("step2_extracted.txt", text)
+    print(
+        f"[2] 已写入 {extracted_path} kind={kind} chars={len(text)} urls={len(urls)}",
+        flush=True,
+    )
+    return text_data
+
+
+def write_url_chunkable_source(text_data: TextData) -> ChunkableSource:
     """
     URL 适配器吐可分块原文（无页，用 text）。
 
     功能：写 data/result/<source>/chunkable_source.json。
-    应用场景：PIPELINE=text，step2 之后。
-    输入：text_data — step2 的 {kind, text, urls}。
+    应用场景：PIPELINE=text，write_extracted 之后。
+    输入：text_data — write_extracted 的 {kind, text, urls}。
     输出：可分块原文对象。
     """
     source_name = url_source_name()
     tags = infer_ingest_tags(text_data["text"], source_name)
-    payload = {
+    payload: ChunkableSource = {
         "source": source_name,
         "kind": text_data["kind"],
         "text": text_data["text"],
@@ -411,31 +470,17 @@ def write_url_chunkable_source(text_data: dict) -> dict:
     source_dir.mkdir(parents=True, exist_ok=True)
     path = source_dir / "chunkable_source.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"可分块原文 已写入 {path}")
+    print(f"[3] 可分块原文 已写入 {path}", flush=True)
     return payload
 
 
-def index_url_chunks(source_obj: dict) -> Path:
-    """
-    共享分块后写进向量库。
-
-    功能：调向量层 entrance.run_vector，与 ingest 同一条写库路径。
-    应用场景：PIPELINE=text。
-    输入：source_obj — 可分块原文（磁盘上已有 chunkable_source.json）。
-    输出：LanceDB 目录路径。
-    异常：知识块为空 → ValueError。
-    """
-    source_path = KB_RESULT_DIR / source_obj["source"] / "chunkable_source.json"
-    return run_vector(source_path)
-
-
-def step3_split_chunks(text_data: dict) -> list[str]:
+def split_chunks(text_data: TextData) -> list[str]:
     """
     按文件类型把原文切成原子化用的块。
 
     功能：调用 offline.vector.chunk.split_text_for_kind；pdf 按页组块，其余按段。空块视为失败。
     应用场景：流水线第 3 步，只在 PIPELINE=knowledge 时调用。
-    输入：text_data — step2 的 {kind, text, urls}。
+    输入：text_data — write_extracted 的 {kind, text, urls}。
     输出：块文本列表。
     异常：分块为空 → ValueError。
     """
@@ -443,27 +488,26 @@ def step3_split_chunks(text_data: dict) -> list[str]:
     chunks = split_text_for_kind(text_data["text"], text_data["kind"], max_doc_tokens=MAX_DOC_TOKENS)
     if not chunks:
         raise ValueError("原文分块为空")
-    print(f"[阶段3] 分块完成 kind={text_data['kind']} chunks={len(chunks)}")
+    print(f"[3] 分块完成 kind={text_data['kind']} chunks={len(chunks)}", flush=True)
     return chunks
 
 
-def step4_atomic_extract(chunks: list[str], text_data: dict) -> list[dict]:
+def atomic_extract(chunks: list[str], text_data: TextData) -> list[AtomicChunk]:
     """
     对每一块调用原子化提示词，得到 topic + items。
 
-    功能：按块调 LLM，清洗 items；本步不补 URL（留给 step5）。
+    功能：按块调 LLM，清洗 items；本步不补 URL（留给 fill_missing_urls）。
     应用场景：流水线第 4 步。
-    输入：chunks — step3 的块；text_data — 提供 kind 与 urls。
+    输入：chunks — split_chunks 的块；text_data — 提供 kind 与 urls。
     输出：[{chunk_index, topic, text, items}, ...]。
     异常：LLM 没返回对象 → RuntimeError。
     """
     kind = text_data["kind"]
-    urls = text_data["urls"]
-    urls_text = "\n".join(urls or re.findall(r"https?://\S+", text_data["text"]))
-    atomic_chunks = []
+    urls_text = "\n".join(text_data["urls"])
+    atomic_chunks: list[AtomicChunk] = []
     total = len(chunks)
     for chunk_index, chunk_text in enumerate(chunks, start=1):
-        print(f"[阶段4] [{chunk_index}/{total}] 原子化 chars={len(chunk_text)}")
+        print(f"[4] [{chunk_index}/{total}] 原子化 chars={len(chunk_text)}", flush=True)
         prompt = (
             ATOMIC_PROMPT.replace("__KIND__", kind)
             .replace("__URLS__", urls_text)
@@ -485,33 +529,33 @@ def step4_atomic_extract(chunks: list[str], text_data: dict) -> list[dict]:
                 "items": clean_atomic_items(items),
             }
         )
-    print(f"[阶段4] 原子化完成 chunks={total}")
+    print(f"[4] 原子化完成 chunks={total}", flush=True)
     return atomic_chunks
 
 
-def step5_fill_missing_urls(atomic_chunks: list[dict], text_data: dict) -> list[dict]:
+def fill_missing_urls(atomic_chunks: list[AtomicChunk], text_data: TextData) -> list[AtomicChunk]:
     """
     把原文里出现过、但 items 尚未覆盖的 URL 补进每一块。
 
     功能：用 URL 所在行的前两行当 index 上下文；默认 index 对文档类用「图片」，其余用「链接」。
           每个 chunk 都会检查全文 URL。
     应用场景：流水线第 5 步。
-    输入：atomic_chunks — step4 产出；text_data — 提供 text 与 kind。
+    输入：atomic_chunks — atomic_extract 产出；text_data — 提供 text 与 kind。
     输出：补完 URL 并再次清洗 items 的同一列表（原地修改后返回）。
     """
     kind = text_data["kind"]
     doc_text = text_data["text"]
-    default_index = "图片" if kind in ("docx", "pdf", "excel", "xlsx") else "链接"
-    doc_urls = re.findall(r"https?://\S+", doc_text or "")
+    default_index = "图片" if kind in DOC_KINDS_IMAGE_INDEX else "链接"
+    doc_urls = URL_PATTERN.findall(doc_text or "")
     doc_lines = [line.rstrip() for line in (doc_text or "").splitlines()]
     filled = 0
     for chunk in atomic_chunks:
-        items = chunk.get("items", [])
+        items: list[dict] = list(chunk.get("items", []))
         for url in doc_urls:
             if any(url in str(item.get("index", "")) or url in str(item.get("content", "")) for item in items):
                 continue
             ctx_index = default_index
-            ctx_lines = []
+            ctx_lines: list[str] = []
             for index, line in enumerate(doc_lines):
                 if url not in line:
                     continue
@@ -530,27 +574,27 @@ def step5_fill_missing_urls(atomic_chunks: list[dict], text_data: dict) -> list[
         "step5_atomic_chunks.json",
         json.dumps(atomic_chunks, ensure_ascii=False, indent=2),
     )
-    print(f"[阶段5] 已写入 {chunks_path} filled={filled} doc_urls={len(doc_urls)}")
+    print(f"[5] 已写入 {chunks_path} filled={filled} doc_urls={len(doc_urls)}", flush=True)
     return atomic_chunks
 
 
-def step6_retrieve_rebuild(atomic_chunks: list[dict], kind: str) -> list[dict]:
+def retrieve_rebuild(atomic_chunks: list[AtomicChunk], kind: str) -> list[KnowledgeItem]:
     """
     把每块的原子化 items 重组为更利于一次命中的检索行。
 
     功能：按块调检索重组提示词，规范化为 [{index, content}, ...]。
     应用场景：流水线第 6 步。
-    输入：atomic_chunks — step5 产出；kind — 文件类型，写入提示词。
+    输入：atomic_chunks — fill_missing_urls 产出；kind — 文件类型，写入提示词。
     输出：所有块的 rows 拼成一条列表。
     """
-    rows = []
+    rows: list[KnowledgeItem] = []
     total = len(atomic_chunks)
     for chunk in atomic_chunks:
         chunk_index = int(chunk.get("chunk_index") or 0)
         chunk_text = str(chunk.get("text") or "")
         atom_items = chunk.get("items", [])
         topic = str(chunk.get("topic") or "")
-        print(f"[阶段6] [{chunk_index}/{total}] 检索重组 atom_items={len(atom_items)}")
+        print(f"[6] [{chunk_index}/{total}] 检索重组 atom_items={len(atom_items)}", flush=True)
         atom_items_text = json.dumps({"topic": topic, "items": atom_items}, ensure_ascii=False, indent=2)
         prompt = (
             RETRIEVE_PROMPT.replace("__KIND__", kind)
@@ -579,20 +623,20 @@ def step6_retrieve_rebuild(atomic_chunks: list[dict], kind: str) -> list[dict]:
         "step6_retrieve_rows.json",
         json.dumps(rows, ensure_ascii=False, indent=2),
     )
-    print(f"[阶段6] 已写入 {rows_path} rows={len(rows)}")
+    print(f"[6] 已写入 {rows_path} rows={len(rows)}", flush=True)
     return rows
 
 
-def step7_write_kv(retrieve_rows: list[dict]) -> list[dict]:
+def write_kv(retrieve_rows: list[KnowledgeItem]) -> list[KvPair]:
     """
-    把重组行转成 kv_list 并写进磁盘。
+    把重组行转成 KV 条目并写进磁盘。
 
     功能：{index, content} → {key, value}；写 step7_knowledge_kv.json，并 upsert 进 kv_store.json。
     应用场景：流水线第 7 步。
-    输入：retrieve_rows — step6。
+    输入：retrieve_rows — retrieve_rebuild。
     输出：kv_list。
     """
-    kv_list = []
+    kv_list: list[KvPair] = []
     for row in retrieve_rows:
         key = str(row.get("index", "")).strip()
         value = str(row.get("content", "")).strip()
@@ -604,7 +648,7 @@ def step7_write_kv(retrieve_rows: list[dict]) -> list[dict]:
         "step7_knowledge_kv.json",
         json.dumps(kv_list, ensure_ascii=False, indent=2),
     )
-    print(f"[阶段7] 已写入 {kv_path} items={len(kv_list)}")
+    print(f"[7] 已写入 {kv_path} items={len(kv_list)}", flush=True)
 
     source_name = url_source_name()
     store_path = RESULT_DIR / "kv_store.json"
@@ -623,32 +667,36 @@ def step7_write_kv(retrieve_rows: list[dict]) -> list[dict]:
         )
     store.upsert(entries)
     store.save(store_path)
-    print(f"[阶段7] KV 存储 已写入 {store_path} records={len(store.records)}")
+    print(f"[7] KV 存储 已写入 {store_path} records={len(store.records)}", flush=True)
     return kv_list
 
 
 if __name__ == "__main__":
+    faulthandler.dump_traceback_later(RUN_LIMIT_SEC, exit=True)
+    sys.stdout.reconfigure(encoding="utf-8")
+
     source = FILE_URL.strip() or str(LOCAL_FILE)
-    print(f"PIPELINE={PIPELINE}")
-    print(f"source={source}")
-    # 阶段1：anyurl2text 抽原文 → data/result/kv/step1_extract_response.json
-    extract_payload = step1_extract_text()
-    # 阶段2：扫 URL、写进磁盘 data/result/kv/step2_extracted.txt
-    text_data = step2_write_extracted(extract_payload)
+    print(f"PIPELINE={PIPELINE}", flush=True)
+    print(f"source={source}", flush=True)
+
+    # 1. 抽原文：FILE_URL 或 LOCAL_FILE → extract_payload
+    extract_payload = extract_text()
+    # 2. 扫 URL、写原文 → data/result/kv/step2_extracted.txt
+    text_data = write_extracted(extract_payload)
     if PIPELINE == "text":
-        # 可分块原文 → 向量层写入 data/lancedb
+        # 3. 可分块原文 → 向量层写入 data/lancedb
         source_obj = write_url_chunkable_source(text_data)
-        index_url_chunks(source_obj)
-        print(f"完成 text kind={text_data['kind']} source={source_obj['source']}")
+        run_vector(KB_RESULT_DIR / source_obj["source"] / "chunkable_source.json")
+        print(f"完成 text kind={text_data['kind']} source={source_obj['source']}", flush=True)
     else:
-        # 阶段3：按 kind 分块（offline.vector.chunk.split_text_for_kind）
-        chunks = step3_split_chunks(text_data)
-        # 阶段4：LLM 原子化
-        atomic_chunks = step4_atomic_extract(chunks, text_data)
-        # 阶段5：补漏 URL → data/result/kv/step5_atomic_chunks.json
-        atomic_chunks = step5_fill_missing_urls(atomic_chunks, text_data)
-        # 阶段6：LLM 检索重组 → data/result/kv/step6_retrieve_rows.json
-        retrieve_rows = step6_retrieve_rebuild(atomic_chunks, text_data["kind"])
-        # 阶段7：kv_list → data/result/kv/step7_knowledge_kv.json
-        kv_list = step7_write_kv(retrieve_rows)
-        print(f"完成 knowledge items={len(kv_list)}")
+        # 3. 按 kind 分块（offline.vector.chunk.split_text_for_kind）
+        chunks = split_chunks(text_data)
+        # 4. LLM 原子化
+        atomic_chunks = atomic_extract(chunks, text_data)
+        # 5. 补漏 URL → data/result/kv/step5_atomic_chunks.json
+        atomic_chunks = fill_missing_urls(atomic_chunks, text_data)
+        # 6. LLM 检索重组 → data/result/kv/step6_retrieve_rows.json
+        retrieve_rows = retrieve_rebuild(atomic_chunks, text_data["kind"])
+        # 7. KV 条目 → data/result/kv/step7_knowledge_kv.json
+        kv_list = write_kv(retrieve_rows)
+        print(f"完成 knowledge items={len(kv_list)}", flush=True)

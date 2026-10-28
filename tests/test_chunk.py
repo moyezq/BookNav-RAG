@@ -154,7 +154,7 @@ def test_一页只归第一条命中的区间():
 
 
 def test_所有区间外的页会被丢弃且不报错():
-    """按目录分页这一步确实不说话（P1·8）：丢页由 scripts/verify_ingest.py 分类后报出来。"""
+    """按目录分页这一步确实不说话（P1·8）：丢页由 scripts/ingest/verify_ingest.py 分类后报出来。"""
     pages = [{"page": 99, "text": "区间外的正文"}]
     ranges = [{"title": "甲节", "start_page": 1, "end_page": 10}]
 

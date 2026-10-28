@@ -50,9 +50,9 @@
 
 入库时从知识正文抽出过滤标签；来源仍是文档身份。在线由意图识别对照库内已有标签给出本轮候选，供召回加权，不手填、不按字段强制筛选（ADR-0035）。问答页只展示芯片。命令行 `filters` 非空时可覆盖，方便调试。字段名见 ADR-0026。
 
-## ADR-0015 · 2026-10-17 · 提问口不另开 query/
+## ADR-0015 · 2026-10-28 · 提问口不另开 query/
 
-HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命令行调试 `scripts/query_kb.py`，评测 `scripts/eval_kb.py`。不重建 `query/`。
+HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命令行调试 `scripts/ask/query_kb.py`，评测 `scripts/eval/eval_kb.py`。不重建 `query/`。
 
 ## ADR-0016 · 2026-09-28 · 抽取方式可插拔，collect 写出可分块原文
 
@@ -66,9 +66,9 @@ HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命
 
 入库和提问都要把文本变成向量。实现与进程入口都在 `embed/server.py`，不属于 `offline/` 也不属于 `online/`。从仓库根 `python -m embed.server`。下载是 `embed/download_embed.py`，权重落在同目录 `embed/models/`（不再套一层模型名目录）。离线与在线都 HTTP 调 8030。
 
-## ADR-0019 · 2026-09-28 · 入库脚本在 scripts/ingest.py
+## ADR-0019 · 2026-10-28 · 入库脚本在 scripts/ingest/ingest.py
 
-人对库跑入库，入口是 `python scripts/ingest.py`。抽取层与向量层只提供函数；脚本按份先抽取再向量。编排放 `scripts/`，不放进 `extract/` 或 `vector/`。要跑哪一份源，改该脚本顶部常量，不是系统配置。
+人对库跑入库，入口是 `python scripts/ingest/ingest.py`。抽取层与向量层只提供函数；脚本按份先抽取再向量。编排放 `scripts/`（按场景分子目录），不放进 `extract/` 或 `vector/`。要跑哪一份源，改该脚本顶部常量，不是系统配置。
 
 ## ADR-0020 · 2026-10-17 · 问答入口是 online/server.py，路由进 online/router.py
 
@@ -84,7 +84,7 @@ HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命
 
 ## ADR-0023 · 2026-10-17 · 检索门面指独立前端
 
-查库是召回层。检索门面指独立前端 `frontend/`，只调后端的轻量 HTTP 接口展示问答。没有该页，`POST /api/ask` 与 `scripts/query_kb.py` 仍能问。不要把 `retrieve.py` 叫门面。
+查库是召回层。检索门面指独立前端 `frontend/`，只调后端的轻量 HTTP 接口展示问答。没有该页，`POST /api/ask` 与 `scripts/ask/query_kb.py` 仍能问。不要把 `retrieve.py` 叫门面。
 
 ## ADR-0024 · 2026-09-28 · 向量库后端用嵌入式 LanceDB
 
@@ -108,9 +108,9 @@ Windows 本地向量写进 `data/lancedb/`，一张 `chunks` 表同时存向量�
 
 命中一小节后，生成需要同一目录标题下的前后步骤。`catalogue_title` 写入 LanceDB 表，不进检索命中的字段约定。重排截 `TOP_K` 之后，按来源 + 标题把邻块并进命中 `text` / `pages`，有 token 上限；空标题不并。同一标题在窗口里只留最先出现的那条。
 
-## ADR-0029 · 2026-10-17 · 层与模块常量集中在 conf/base.py
+## ADR-0029 · 2026-10-28 · 层与模块常量集中在 conf/base.py
 
-ROOT 与层、模块的开关、阈值、提示词都进 `conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest.py`。
+ROOT 与层、模块的开关、阈值、提示词都进 `conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest/ingest.py`。
 
 ## ADR-0030 · 2026-09-28 · 删掉不起作用的开关，不修通假路径
 

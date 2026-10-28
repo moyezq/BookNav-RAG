@@ -4,7 +4,7 @@
 .env.*.local
 
 # 本机私有评测集（第三方手册 grounding，不进仓）；公开默认用 eval_samples.json
-scripts/eval_samples.private.json
+scripts/eval/eval_samples.private.json
 *.private.json
 
 # Python
@@ -22,8 +22,7 @@ venv/
 /data/source/*
 !/data/source/README.txt
 !/data/source/demo_handbook.pdf
-/embed/models/
-/models/
+models/
 
 # 前端
 /frontend/node_modules/

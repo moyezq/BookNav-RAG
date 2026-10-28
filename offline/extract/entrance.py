@@ -3,7 +3,7 @@
 抽取层入口：一份源 → 可分块原文。
 
 职责：probe → route → 抽取方式 → enrich → collect。不分块、不向量。
-      由 scripts/ingest.py 调用；本文件无 __main__。
+      由 scripts/ingest/ingest.py 调用；本文件无 __main__。
 输入：data/source/ 下扩展名在允许清单里的文件（本阶段仅 PDF 本仓抽页；不依赖 anyurl2text）。
 产出：data/result/<source>/chunkable_source.json。
 """
@@ -47,7 +47,7 @@ def run_extract(source_path: Path) -> Path:
     一份源走完抽取层，写出可分块原文。
 
     功能：基础信息 → 抽正文 → 标签 → collect。
-    应用场景：scripts/ingest.py 逐个文件调用。
+    应用场景：scripts/ingest/ingest.py 逐个文件调用。
     输入：source_path — data/source 下的文件。
     输出：chunkable_source.json 路径。
     """

@@ -4,12 +4,12 @@
 
 ## 1. 离线入库
 
-入口 `python scripts/ingest.py`。每份源：抽取层再向量层。前提：`python -m embed.server` 已启动。改完分块策略只重跑向量层：`python scripts/ingest.py --vector-only`（重复使用已有 `chunkable_source.json`，不重跑抽取，也不重跑 enrich）。层 `entrance.py` 只提供函数，没有 `__main__`。
+入口 `python scripts/ingest/ingest.py`。每份源：抽取层再向量层。前提：`python -m embed.server` 已启动。改完分块策略只重跑向量层：把该脚本顶部 `VECTOR_ONLY` 改成 `True` 再跑（重复使用已有 `chunkable_source.json`，不重跑抽取，也不重跑 enrich）。层 `entrance.py` 只提供函数，没有 `__main__`。
 
 只认 `SOURCE_ALLOWED_SUFFIXES`（本阶段 `.pdf`）；不在清单里的文件跳过并打日志。要跑哪几份，改脚本顶部 `PROCESS_ONLY`（空元组 = `data/source` 全部）。非 PDF 在路由拒绝。
 
 ```text
-scripts/ingest.py
+scripts/ingest/ingest.py
   extract.entrance.run_extract
     probe → route → methods → enrich → collect    # → chunkable_source.json
   vector.entrance.run_vector
@@ -35,13 +35,13 @@ scripts/ingest.py
 
 BM25 与向量并列，对同一批知识块建倒排；倒排在召回 load 时用同一批正文建，不上独立搜索引擎。Hash 向量只为打通流程，不是语义 embedding。换 embedding 维数或 embedder 名须删掉 `data/lancedb` 后重新入库。`EMBEDDER_KIND=hash` 仍可跑通，但不是语义检索。
 
-KV 抽取吃可分块原文，不吃知识块；实验脚本在 `scripts/backup/`，不进抽取 `entrance`、不进召回。
+KV 抽取吃可分块原文，不吃知识块；实验脚本是 `scripts/url_to_knowledge.py`，不进抽取 `entrance`、不进召回。
 
 ## 2. 在线问答
 
 长驻三个进程：向量 8030、问答 8031、Vite 8032。问答入口永远 `python -m online.server`：该文件只创建 FastAPI、`include_router`、注册 lifespan；`POST /api/ask` 在 `online/router.py`。不要 `python online/router.py`。启动 lifespan：`open_knowledge_base` 一次；重新入库后要重启该进程。改完在线代码同样要重启，MemorySaver 会话会丢。
 
-HTTP 入 `AskBody{text, session, filters}`，出 `{answer, citations, tags}`。`session` 限 `SESSION_ID_MAX_CHARS`、只含 `[A-Za-z0-9_-]`。命令行 `scripts/query_kb.py`（单轮）与 `scripts/chat_kb.py`（多轮同一 session）共用 `run_ask_graph`。
+HTTP 入 `AskBody{text, session, filters}`，出 `{answer, citations, tags}`。`session` 限 `SESSION_ID_MAX_CHARS`、只含 `[A-Za-z0-9_-]`。命令行 `scripts/ask/query_kb.py`（单轮）与 `scripts/ask/chat_kb.py`（多轮同一 session）共用 `run_ask_graph`。
 
 ```text
 intent →（route=chitchat 则跳过召回）recall → rerank → generate
@@ -49,7 +49,7 @@ intent →（route=chitchat 则跳过召回）recall → rerank → generate
 
 闲聊与检索生成都用用户原文 `question`；召回用改写后的 `text`。身份追问沿用上一轮筛选和检索问句。`tags` 在 intent 写出，generate 不改。关掉 `USE_REWRITE`，主路径对象形状不变。
 
-同一条检索核心另有 `ask_once_core`：与 intent / recall / rerank 同一顺序，停在生成前，给 `scripts/eval_kb.py` 与 pytest 用。
+同一条检索核心另有 `ask_once_core`：与 intent / recall / rerank 同一顺序，停在生成前，给 `scripts/eval/eval_kb.py` 与 pytest 用。
 
 ### 2.1 意图识别
 
@@ -81,7 +81,7 @@ intent →（route=chitchat 则跳过召回）recall → rerank → generate
 
 提示词组装：检索命中拼进提示，另带文档身份 `tags`（与芯片同源）用来回答来源 / 品牌 / 车型。操作和规格只根据原文片段。程序组装 `citations[{id, source, pages, snippet}]`，模型只写 `answer`。检索门面把引用放侧栏，由答案旁按钮选定。
 
-最小评测：正样本看 Hit@1 / Hit@`TOP_K`（期望来源，可再对页）；负样本看 `should_refuse`。`--route chitchat` 注入后正样本必须全部未命中。
+最小评测：正样本看 Hit@1 / Hit@`TOP_K`（期望来源，可再对页）；负样本看 `should_refuse`。`ROUTE_OVERRIDE="chitchat"` 注入后正样本必须全部未命中。
 
 ## 3. 字段约定
 

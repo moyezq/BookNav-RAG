@@ -3,7 +3,7 @@
 评测样本与评测口的测试：样本文件自洽，拒答阈值扫点真有分辨力。
 
 职责：锁定四件事——
-      1. scripts/eval_samples.json 的形状与自洽：id / question 唯一、条数 ≥50、分组认得、
+      1. scripts/eval/eval_samples.json 的形状与自洽：id / question 唯一、条数 ≥50、分组认得、
          hit 样本必带 source 与 pages、负与闲聊样本不带 source/pages、requires_sources 只引用
          样本文件自己声明的来源；
       2. 多轮样本的 turns 形状与图写进 state 的轮次一致（question / text / answer / route /
@@ -24,7 +24,7 @@ import json
 import pytest
 
 from online.intent.classify import format_turns
-from scripts.eval_kb import SAMPLES_PATH, _hit_at, _pages_overlap, calibrate_threshold, load_samples
+from scripts.eval.eval_kb import SAMPLES_PATH, _hit_at, _pages_overlap, calibrate_threshold, load_samples
 
 # 样本文件里允许出现的分组；新加分组要连测试一起改，避免拼错组名还静默算数
 GROUPS = {

@@ -5,7 +5,7 @@
 职责：读 data/result/<source>/chunkable_source.json，写 step4_chunks.json，按来源写入 data/lancedb 的 chunks 表。
       不问答。不实现模型、不下权重。不写 step5 JSON。
 前置：抽取层已写出可分块原文；EMBEDDER_KIND=http 时 python -m embed.server 已起。
-      由 scripts/ingest.py 调用；本文件无 __main__。
+      由 scripts/ingest/ingest.py 调用；本文件无 __main__。
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def list_chunkable_paths() -> list[Path]:
         if source_path.is_file():
             paths.append(source_path)
     if not paths:
-        raise FileNotFoundError(f"未找到可分块原文，先跑 python scripts/ingest.py")
+        raise FileNotFoundError(f"未找到可分块原文，先跑 python scripts/ingest/ingest.py")
     return paths
 
 
@@ -74,7 +74,7 @@ def run_vector(source_path: Path) -> Path:
 
     功能：分块 → 调向量服务 → 按来源替换写入 LanceDB chunks 表 → 写 step4_chunks.json。
           step4 在写库成功之后才写成文件：embed 或写库失败时不许留下「step4 新 / 库旧」的半成品。
-    应用场景：scripts/ingest.py 阶段2。
+    应用场景：scripts/ingest/ingest.py 阶段2。
     输入：source_path — chunkable_source.json。
     输出：LanceDB 目录路径。
     异常：知识块为空 → ValueError。

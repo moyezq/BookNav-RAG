@@ -7,7 +7,7 @@
       EMBED_API_URL、EMBED_API_KEY、CHAT_API_URL、CHAT_MODEL_NAME。
 权重目录不在这里：在 embed.MODEL_DIR（embed/models/）。
 另导出 ANYURL2TEXT_URL：抽取层已与 anyurl2text 解耦（ADR-0034），只剩 KV 实验脚本
-      `scripts/backup/url_to_knowledge.py` 打它的 `/extract` 时用。密钥边界只有两处——
+      `scripts/url_to_knowledge.py` 打它的 `/extract` 时用。密钥边界只有两处——
       进程环境变量与本仓 `.env`，不读别的仓。
 """
 

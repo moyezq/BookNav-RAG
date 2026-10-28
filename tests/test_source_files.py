@@ -7,7 +7,7 @@
       2. 一个可入库的都没有 → FileNotFoundError，消息里给出支持的后缀；
       3. 后缀大小写不敏感（Windows 上 `手册.PDF` 本来就该入库）。
       为什么要有这条：加允许清单之前 README.txt 会被当成源进抽取，在路由被拒后
-      scripts/ingest.py 只打印一行「失败」并且退 0，看着像入库成功。
+      scripts/ingest/ingest.py 只打印一行「失败」并且退 0，看着像入库成功。
 
 应用场景：改 SOURCE_ALLOWED_SUFFIXES 或 list_source_files 之后跑本文件。
 """

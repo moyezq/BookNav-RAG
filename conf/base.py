@@ -161,7 +161,7 @@ HANDBOOK_PROMPT = (
 # 依据（2026-10-08，三份车手册库、经 ask_once_core）：负样本
 # 「Python 怎么读 JSON 文件」最高余弦 0.3989 → 拒；
 # 「红烧肉怎么做好吃」经改写后 0.4197 → 曾放行。0.4 卡在两者之间，非 PR 最优。
-# 换库或换样例后请跑：python scripts/eval_kb.py --calibrate
+# 换库或换样例后请把 scripts/eval/eval_kb.py 顶部 CALIBRATE 改成 True 再跑
 REFUSE_MIN_SCORE = 0.4
 REFUSE_TEXT = "知识库里没有足够依据回答这个问题。"
 

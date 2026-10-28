@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 """
-入库产物验收：只读检查一份来源的抽取产出与分块产出，回答「这一轮入库有没有坏」。
+入库产物验收：只读检查一份来源的抽取产出与分块产出，回答「这一轮入库有没有坏」。不写库，不调模型。
 
 职责：读 data/result/<来源>/chunkable_source.json、step4_chunks.json 与 data/lancedb 的 chunks 表，
       算出一组可核对的数字，对机械可证的不变量做断言并给出非零退出码。不写库，不调模型。
@@ -39,7 +38,7 @@
   签名法（拿源页正文的连续 CJK 串去块正文里找）只作辅助观察：源页是密集 markdown，
   清洗后签名串可能被打断，会漏判，**不能**用来算页覆盖与页精度。
 
-  公开默认样例：data/result/demo_handbook/（自造手册）。本机大手册验收用 --source/--chunks 指向对应产物。
+  公开默认样例：data/result/demo_handbook/（自造手册）。本机大手册验收改顶部 SOURCE_PATH / CHUNKS_PATH。
 
 怎么跑（本文件入口）
   职责：读三个产出，打印一组数字与判定，按检查结果决定退出码。
@@ -48,22 +47,24 @@
     2. check_ingest — 按原理 1～3 算页覆盖、丢页原因分类、页精度、id 唯一性、token 分布、tags 唯一数。
     3. load_store_records / check_store_sync — 读 data/lancedb 同来源的块，按原理 4 比 id 与页码。
     4. 打印报告；硬不变量被打破时 exit 1。
-  输入：--source / --chunks 两个 JSON 路径。默认指向样本来源的现有产出；库目录取 conf.LANCEDB_DIR。
+  输入：下面常量 SOURCE_PATH / CHUNKS_PATH；库目录取 conf.LANCEDB_DIR。
   前置：无。不调模型；库同步那一步要求 data/lancedb 已入库（读不到即算未过）。
-  产出：控制台报告；退出码 0=通过，1=有硬断言未过（--strict 时任一问题都算未过）。
+  产出：控制台报告；退出码 0=通过，1=有硬断言未过（STRICT 时任一问题都算未过）。
   对外：check_ingest、classify_missing_pages 与 check_store_sync（纯函数，返回结果 dict，供 pytest 直接调用）。
+  跑法：仓库根 uv run python scripts/ingest/verify_ingest.py
 """
 
 from __future__ import annotations
 
-import argparse
+import faulthandler
 import json
 import re
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Final
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import conf  # ROOT 进 sys.path；库目录取 conf.LANCEDB_DIR
 
 from offline.vector.chunk import (
@@ -75,17 +76,19 @@ from offline.vector.chunk import (
 )
 
 # ========== 按需修改 ==========
-DEFAULT_SOURCE = "data/result/demo_handbook/chunkable_source.json"
-DEFAULT_CHUNKS = "data/result/demo_handbook/step4_chunks.json"
+SOURCE_PATH: Final[str] = "data/result/demo_handbook/chunkable_source.json"
+CHUNKS_PATH: Final[str] = "data/result/demo_handbook/step4_chunks.json"
+STRICT: Final[bool] = False
+RUN_LIMIT_SEC: Final[int] = 300
 # 签名串最短长度；太短会在别的页里偶然命中
-SIGNATURE_CHARS = 24
-# 「有正文、又不是导航页」的丢页上限（P1·8）：这类页没有别的解释，只能是页码偏移、
+SIGNATURE_CHARS: Final[int] = 24
+# 「有正文、又不是导航页」的丢页上限：这类页没有别的解释，只能是页码偏移、
 # 目录截断或按目录分页的算法有洞丢掉的正文，超过这个数就报硬问题。设 0 表示一页都不许丢。
-MISSING_CONTENT_MAX = 0
+MISSING_CONTENT_MAX: Final[int] = 0
 # 判成章扉页的页里，长正文行合计超过这个数 → 记「疑似误杀」（启发式，只进待确认）
-SUSPECT_NAVIGATION_BODY_CHARS = 200
+SUSPECT_NAVIGATION_BODY_CHARS: Final[int] = 200
 # 一行至少这么长才算「正文句」，用来把 markdown 表格行与短标题排除在残留正文之外
-SUSPECT_LINE_MIN_CHARS = 40
+SUSPECT_LINE_MIN_CHARS: Final[int] = 40
 # ==============================
 
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]{%d,}" % SIGNATURE_CHARS)
@@ -182,6 +185,7 @@ def navigation_leftover_prose(text: str) -> int:
 def classify_missing_pages(
     source_obj: dict,
     missing: list,
+    *,
     suspect_body_chars: int = SUSPECT_NAVIGATION_BODY_CHARS,
 ) -> dict:
     """
@@ -263,6 +267,7 @@ def classify_missing_pages(
 def check_ingest(
     source_obj: dict,
     chunks: list[dict],
+    *,
     missing_content_max: int = MISSING_CONTENT_MAX,
     suspect_body_chars: int = SUSPECT_NAVIGATION_BODY_CHARS,
 ) -> dict:
@@ -456,7 +461,7 @@ def check_store_sync(source: str, chunks: list[dict], records: list[dict]) -> di
     if only_in_step4:
         hard_problems.append(
             f"库里缺 {len(only_in_step4)} 块（step4 有、data/lancedb 没有）：{only_in_step4[:5]}；"
-            f"入库没写完，重跑 python scripts/ingest.py --vector-only"
+            f"入库没写完，把 scripts/ingest/ingest.py 顶部 VECTOR_ONLY 改成 True 再跑"
         )
     if only_in_store:
         hard_problems.append(
@@ -570,27 +575,31 @@ def load_inputs(source_path: Path, chunks_path: Path) -> tuple[dict, list]:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="入库产物验收：页覆盖与页精度检查")
-    parser.add_argument("--source", default=DEFAULT_SOURCE, help="chunkable_source.json 路径")
-    parser.add_argument("--chunks", default=DEFAULT_CHUNKS, help="step4_chunks.json 路径")
-    parser.add_argument("--strict", action="store_true", help="任一问题（含待确认项）即非零退出")
-    args = parser.parse_args()
+    faulthandler.dump_traceback_later(RUN_LIMIT_SEC, exit=True)
+    sys.stdout.reconfigure(encoding="utf-8")
 
-    source_obj, chunks = load_inputs(Path(args.source), Path(args.chunks))
+    # 1. 读可分块原文与分块产出
+    source_obj, chunks = load_inputs(Path(SOURCE_PATH), Path(CHUNKS_PATH))
+    print(f"[1] 已读 {SOURCE_PATH} / {CHUNKS_PATH}", flush=True)
+    # 2. 页覆盖、丢页分类、页精度、id、token、tags
     result = check_ingest(source_obj, chunks)
+    print("[2] check_ingest 完成", flush=True)
+    # 3. 读 data/lancedb 同来源的块，比 id 与页码
     try:
         records = load_store_records(conf.LANCEDB_DIR)
         store_sync = check_store_sync(source_obj.get("source", ""), chunks, records)
     except (FileNotFoundError, ValueError) as exc:
-        # 库读不出来同样算入库没通过：这一步查的就是「库和 step4 对不对得上」
         store_sync = check_store_sync(source_obj.get("source", ""), chunks, [])
         store_sync["hard_problems"].append(f"向量库读不出来：{exc}")
     result["store_sync"] = store_sync
     result["hard_problems"].extend(store_sync["hard_problems"])
+    print("[3] check_store_sync 完成", flush=True)
+    # 4. 打印报告；硬不变量被打破时 exit 1
     print_report(result)
+    sys.stdout.flush()
 
     if result["hard_problems"]:
         raise SystemExit(1)
-    if args.strict and result["problems"]:
+    if STRICT and result["problems"]:
         raise SystemExit(1)
     raise SystemExit(0)

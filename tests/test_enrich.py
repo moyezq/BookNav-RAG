@@ -10,7 +10,7 @@
       一直跨到最后一个 `}`，json.loads 必失败 → 整个 tags 变 []，而入库照样算成功；
       没有 3 则一份「没有标签的文档」混在「成功 N」里，没人看得出来。
 
-应用场景：改 enrich.py 的解析、或改 scripts/ingest.py 的入库汇总之后跑
+应用场景：改 enrich.py 的解析、或改 scripts/ingest/ingest.py 的入库汇总之后跑
           python -m pytest tests/test_enrich.py。
 """
 
@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from offline.extract import enrich
-from scripts.ingest import report_empty_tags
+from scripts.ingest.ingest import report_empty_tags
 
 # ========== 解析模型输出（P1·12 前半） ==========
 

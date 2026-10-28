@@ -308,7 +308,7 @@ def ask_once_core(
 
     功能：分类 → 改写 → 本轮筛选（沿用上一轮 / 对照库内目录）→ 召回 → 重排截 TOP_K → 同节邻块。
           步骤与顺序跟图里的 intent / recall / rerank 一致；这是评测能对齐线上路径的前提。
-    应用场景：scripts/eval_kb.py 正负样本判定；pytest 的在线路径测试。
+    应用场景：scripts/eval/eval_kb.py 正负样本判定；pytest 的在线路径测试。
     输入：knowledge_base — 已 load；question — 用户原文；turns — 历史轮（与图 state 同形状），可空；
           filters — 调用方覆盖，非空则强制检索；route_override — 注入路由，验收用（传 chitchat 时不该召回）；
           write_debug — 是否写 data/result/qa 调试题材，默认取 conf 的 DEBUG_WRITE_QA（默认关）；评测与测试传 False。
@@ -381,7 +381,7 @@ def run_ask_graph(
     跑在线主路径，打出生成结果。
 
     功能：invoke 图；session 非空则按会话续 MemorySaver，turns 只给意图读。
-    应用场景：python -m online.server；scripts/query_kb.py；scripts/chat_kb.py。
+    应用场景：python -m online.server；scripts/ask/query_kb.py；scripts/ask/chat_kb.py。
     输入：knowledge_base — step1；question — 用户原文；filters — 可空，非空则覆盖意图标签；session — 会话 id。
     输出：生成结果 {answer, citations, tags}；另带 route、text 给命令行，HTTP schema 不收这两项。
     """
