@@ -13,11 +13,11 @@
 怎么跑（本文件入口；编号和上面「一条样本」不是同一套）
   职责：开库一次，invoke 图一次，打一块结果后退出。
   入口步骤：
-    1. open_knowledge_base — 读 data/lancedb，只做一次。
+    1. open_knowledge_base — 读 backend/data/lancedb，只做一次。
     2. run_ask_graph — 意图 → 召回 → 重排 → 同节邻块 → 拒答或生成。
   输入：下面常量 QUESTION；FILTER_* 非空则覆盖意图标签。
-  前置：已入库；python -m embed.server 已起；生成需 Chat API key。
-  产出：控制台「结果」块；召回调试仍写 data/result/qa/step2_hits.json。
+  前置：已入库；python -m service.embed.server 已起；生成需 Chat API key。
+  产出：控制台「结果」块；召回调试仍写 backend/data/result/qa/step2_hits.json。
   对外：print_turn。
   跑法：仓库根 uv run python scripts/ask/query_kb.py
 """
@@ -30,11 +30,11 @@ from pathlib import Path
 from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
 
-from online.graph import run_ask_graph
-from online.intent.classify import ROUTE_CHITCHAT
-from online.recall.retrieve import open_knowledge_base
+from backend.online.graph import run_ask_graph
+from backend.online.intent.classify import ROUTE_CHITCHAT
+from backend.online.recall.retrieve import open_knowledge_base
 
 # ========== 按需修改 ==========
 QUESTION: Final[str] = "后视镜怎么折叠"

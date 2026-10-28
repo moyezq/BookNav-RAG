@@ -3,10 +3,10 @@
 在线调试题材的文件写入开关与文件名：默认关，打开时按 session 分文件。
 
 职责：锁定三件事——
-      1. online/recall/retrieve.py::retrieve_hits 的 write_debug 默认取 conf 的 DEBUG_WRITE_QA，
+      1. backend/online/recall/retrieve.py::retrieve_hits 的 write_debug 默认取 conf 的 DEBUG_WRITE_QA，
          默认 False → 不写调试题材；
-      2. online/generate/answer.py::write_qa_result 在 DEBUG_WRITE_QA 关时直接返回，打开才写进磁盘；
-      3. online/graph.py::debug_name 组装文件名（P2·31）：带 session、客户端给的脏 session
+      2. backend/online/generate/answer.py::write_qa_result 在 DEBUG_WRITE_QA 关时直接返回，打开才写进磁盘；
+      3. backend/online/graph.py::debug_name 组装文件名（P2·31）：带 session、客户端给的脏 session
          拼不出 qa 目录之外的路径、没 session 时退回时间戳+随机 → 并发两问产出两个文件。
       为什么要有这条：2026-10-08 实测每问覆盖写 141KB 的 step2_hits.json，
       写盘抛 PermissionError 会穿透 router 变成 HTTP 500；并发时最后写者赢，调试信息本身是坏的。
@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import inspect
 
-from conf import DEBUG_TAG_MAX_CHARS
-from online.generate import answer
-from online.graph import debug_name
-from online.recall import retrieve
+from backend.conf import DEBUG_TAG_MAX_CHARS
+from backend.online.generate import answer
+from backend.online.graph import debug_name
+from backend.online.recall import retrieve
 
 
 class _FakeKnowledgeBase:

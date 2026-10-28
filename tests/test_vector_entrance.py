@@ -2,12 +2,12 @@
 """
 向量层入口的写进磁盘顺序：step4 是向量库的辅助证据，必须写库成功之后才写。
 
-职责：锁定 offline/vector/entrance.py::run_vector 的三件事——
+职责：锁定 backend/offline/vector/entrance.py::run_vector 的三件事——
       1. embed 失败 → 抛错，且 step4_chunks.json **不写进磁盘**（库里还是旧的，不许留半成品）；
       2. 写库成功时才写 step4，写进磁盘那一刻库里已经有这批块；
       3. 写进磁盘的 step4 与写进库的就是同一批块。
       为什么要有这条约定：2026-10-08 的入库在 embed 阶段 ReadTimeout，
-      step4 已经是新的 138 块而 data/lancedb 还是旧的 137 行、78 块页码不同；
+      step4 已经是新的 138 块而 backend/data/lancedb 还是旧的 137 行、78 块页码不同；
       在线检索读的是库，于是「分块改好了」这句话在线上并不成立。
       不调模型、不写真库：替换 entrance.make_embedder 与 entrance.LanceVectorStore。
 
@@ -20,7 +20,7 @@ import json
 
 import pytest
 
-from offline.vector import entrance
+from backend.offline.vector import entrance
 
 SOURCE_OBJ = {
     "source": "样本",

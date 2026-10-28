@@ -26,7 +26,7 @@
 
 远程仓库：https://github.com/moyezq/BookNav-RAG （镜像：https://gitee.com/osc_74795964/book-nav-rag）  
 许可证：[AGPL-3.0-only](LICENSE)  
-仓库**不收录** embedding 权重、第三方版权 PDF、本机私有评测集；演示样例见 `data/source/demo_handbook.pdf`。
+仓库**不收录** embedding 权重、第三方版权 PDF、本机私有评测集；演示样例见 `backend/data/source/demo_handbook.pdf`。
 
 ---
 
@@ -40,7 +40,7 @@
 uv sync
 ```
 
-`uv sync` 按 `pyproject.toml` 建 `.venv`，并以可编辑方式装本仓。`conf` 用 `__file__` 推算仓库根，装成普通 wheel 会找不到 `.env` / `data/` / `embed/models/`。
+`uv sync` 按 `pyproject.toml` 建 `.venv`，并以可编辑方式装本仓。`backend/conf` 用 `__file__` 推算 backend 目录与仓库根，装成普通 wheel 会找不到 `.env` / `backend/data/` / `service/embed/models/`。
 
 要跑 `tests/`：`uv pip install pytest`（只往当前 `.venv` 加这一个包），再 `uv run python -m pytest tests -q`。
 
@@ -48,8 +48,8 @@ uv sync
 copy .env_example .env
 # 编辑 .env，至少填 DEEPSEEK_API_KEY（入库抽标签与问答生成都要用）
 
-uv run python embed/download_embed.py
-# 权重下载到 embed/models/，须有 pytorch_model.bin 或 model.safetensors
+uv run python service/embed/download_embed.py
+# 权重下载到 service/embed/models/，须有 pytorch_model.bin 或 model.safetensors
 
 cd frontend
 npm install
@@ -58,11 +58,11 @@ cd ..
 
 ### Ⅱ 入库
 
-演示手册已在 `data/source/demo_handbook.pdf`（自造 6 页）。把其它 PDF 也放进该目录。第三方版权文档只放本机、不要提交。
+演示手册已在 `backend/data/source/demo_handbook.pdf`（自造 6 页）。把其它 PDF 也放进该目录。第三方版权文档只放本机、不要提交。
 
 ```powershell
 # 入库要向量服务：先开一个终端
-uv run python -m embed.server
+uv run python -m service.embed.server
 ```
 
 另开终端（同一 uv 环境）：
@@ -96,7 +96,7 @@ uv run python start.py
 
 `start.py` 会检查依赖、权重、非空知识库与端口，依次拉起 8030 / 8031 / 8032，就绪后打开浏览器；Ctrl+C 一并停掉。缺权重或尚未入库时会打印下一步，不会静默挂起。
 
-也可分开起：`uv run python -m embed.server` → `uv run python -m online.server` → `cd frontend && npm run dev`。入库或改在线代码后请重启问答进程。
+也可分开起：`uv run python -m service.embed.server` → `uv run python -m backend.online.server` → `cd frontend && npm run dev`。入库或改在线代码后请重启问答进程。
 
 **试问示例**（同一会话，**不要刷新**页面）：
 
@@ -106,7 +106,7 @@ uv run python start.py
 | 2 | 支架怎么折叠 | 按手册说明折叠步骤；侧栏有引用，带来源与页码（约第 3 页） |
 | 3 | 那它怎么展开？ | 仍围绕支架；应答展开步骤（约第 4 页），侧栏继续有引用 |
 
-域外对照（可选）：问「红烧肉怎么做好吃」→ 宜拒答（文案含「没有足够依据」）。阈值 `REFUSE_MIN_SCORE=0.4`（`conf/base.py`）：曾在车手册库上测得域外余弦约 0.40～0.42，卡在边界；换库后把 `scripts/eval/eval_kb.py` 顶部 `CALIBRATE` 改成 `True` 再跑该脚本重定。
+域外对照（可选）：问「红烧肉怎么做好吃」→ 宜拒答（文案含「没有足够依据」）。阈值 `REFUSE_MIN_SCORE=0.4`（`backend/conf/base.py`）：曾在车手册库上测得域外余弦约 0.40～0.42，卡在边界；换库后把 `scripts/eval/eval_kb.py` 顶部 `CALIBRATE` 改成 `True` 再跑该脚本重定。
 
 ---
 
@@ -118,7 +118,7 @@ PDF → 抽取（页 + 印刷目录）→ 分块（块级页码）→ 8030 编�
 ```
 
 - **离线**：`scripts/ingest/ingest.py` 把抽取层与向量层连起来依次调用；写库成功后才写出 `step4_chunks.json`。目录页用动态扫描，不写死「只读前 N 页」。
-- **在线**：`python -m online.server` 启动时读库建 BM25；问答页只调 `POST /api/ask`。
+- **在线**：`python -m backend.online.server` 启动时读库建 BM25；问答页只调 `POST /api/ask`。
 - **页码**：子块只声明自己覆盖的页；`verify_ingest.py` 检查「声明页次 / 页并集 = 1」。
 - **过滤**：文档身份 `source` 精确相等就强制筛选（不参与打分）；动态标签 `{field,value}` 按命中条数加权，不强制筛选候选。
 - **降级**：8030 不可用时走纯 BM25，拒答改看词面规则。
@@ -145,14 +145,17 @@ curl -X POST http://127.0.0.1:8031/api/ask -H "Content-Type: application/json" -
 book-nav-rag/
 ├── start.py                 # 一键起 8030/8031/8032
 ├── pyproject.toml           # 包清单与 pytest；uv sync
-├── embed/                   # 向量服务；入口 python -m embed.server；权重 embed/models（不进仓）
-├── conf/                    # ROOT、开关、路径
-├── offline/extract/         # PDF 抽取、目录、标签
-├── offline/vector/          # 分块、LanceDB
-├── online/                  # 意图、召回、生成、图编排；入口 python -m online.server
-├── frontend/                # 问答页（Vite 8032）；视觉规范 DESIGN.md
-├── scripts/                 # 入库 ingest/、问答 ask/、评测 eval/；KV 实验与 kev08 在此层
-├── data/source/             # 待入库 PDF；演示手册进仓，其余不进仓
+├── backend/                 # 离线抽取 + 在线问答
+│   ├── conf/                # ROOT、开关、路径
+│   ├── data/source/         # 待入库 PDF；演示手册进仓，其余不进仓
+│   ├── offline/extract/     # PDF 抽取、目录、标签
+│   ├── offline/vector/      # 分块、LanceDB
+│   └── online/              # 意图、召回、生成；入口 python -m backend.online.server
+├── frontend/                # 问答页（Vite）；视觉规范 DESIGN.md
+├── service/
+│   ├── embed/               # 向量服务；入口 python -m service.embed.server；权重 embed/models（不进仓）
+│   └── kev08/               # 决策模型预备服务；独立 uv 环境，不接提问口
+├── scripts/                 # 入库 ingest/、问答 ask/、评测 eval/
 └── docs/                    # 内部说明，日常使用不必读
 ```
 
@@ -166,7 +169,7 @@ book-nav-rag/
 - 重排节点目前只截断 `TOP_K`，不换序。
 - 前端筛选芯片为展示；按来源筛选需问句含完整来源名。
 - 入库中断若留下半截暂存行，启动日志会警告；对该来源重新 `ingest` 即可。
-- 第三方版权手册请只放本机 `data/source/`，不要提交或打进发布包。
+- 第三方版权手册请只放本机 `backend/data/source/`，不要提交或打进发布包。
 
 ---
 
@@ -181,7 +184,7 @@ Copyright (c) 2026 moye
 | `pymupdf4llm` | AGPL-3.0 或商业授权；驱动本仓 PDF 抽页 |
 | bge-m3 权重 | 不进仓；按 ModelScope 模型卡许可自行下载 |
 | Chat API（如 DeepSeek） | 密钥只放本机 `.env`，勿提交 |
-| `data/source/demo_handbook.pdf` | 自造演示手册，可再分发 |
-| 第三方厂商手册 | 只可放本机 `data/source/`，已被 gitignore |
+| `backend/data/source/demo_handbook.pdf` | 自造演示手册，可再分发 |
+| 第三方厂商手册 | 只可放本机 `backend/data/source/`，已被 gitignore |
 
-换 embedding 或维数后删 `data/lancedb` 再入库。完整开关与阈值在 `conf/base.py`。
+换 embedding 或维数后删 `backend/data/lancedb` 再入库。完整开关与阈值在 `backend/conf/base.py`。

@@ -8,9 +8,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from conf import SESSION_ID_MAX_CHARS, SESSION_TURNS_MAX
-from online.graph import _clip_turns
-from online.schema import AskBody
+from backend.conf import SESSION_ID_MAX_CHARS, SESSION_TURNS_MAX
+from backend.online.graph import _clip_turns
+from backend.online.schema import AskBody
 
 
 def test_超长session被拒():

@@ -1,8 +1,8 @@
 # 安装元数据。只为「源码留在仓库树里」这一件事服务，见 README「快速开始」的两个长驻入口。
 #
-# 为什么必须 editable：conf/base.py 用 __file__ 推算 ROOT，conf/__init__.py 又用
-# ROOT / config.yaml 的相对目录去找 .env 与 data/、embed/models/。装成普通 wheel 会把包复制到
-# site-packages，ROOT 就落到 site-packages 上，仓库外的 .env 与相对数据目录全部找不到。
+# 为什么必须 editable：backend/conf/base.py 用 __file__ 推算 ROOT（backend 目录）与 REPO_ROOT，
+# backend/conf/__init__.py 又用 ROOT 下相对目录去找 data/、用 REPO_ROOT 找 .env。装成普通 wheel
+# 会把包复制到 site-packages，ROOT 就落到 site-packages 上，仓库外的 .env 与相对数据目录全部找不到。
 # 所以：uv sync；不提供 [project.scripts] 控制台入口。
 # 也不要把它当可从 PyPI 安装的库：版本号只用于本地元数据。
 # 包清单写在本文件。
@@ -38,7 +38,7 @@ dependencies = [
     # HTTP 客户端：调本仓向量服务 8030（KV 实验脚本另用它打外仓 /extract）
     "requests==2.34.2",
 
-    # 向量模型服务 embed/ 与 embed/download_embed.py 用；缺这三个 python -m embed.server 起不来
+    # 向量模型服务 service/embed/ 与 download_embed.py 用；缺这三个 python -m service.embed.server 起不来
     "torch==2.14.0",
     "sentence-transformers==6.0.1",
     "transformers==5.17.0",
@@ -47,10 +47,11 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 # flat-layout 自动发现在本仓会因多个顶层包/目录直接报错，所以显式限定。
-# frontend/、data/ 不是 Python 包；scripts/ 与 tests/ 是调试与用例，不是被 import 的库。
-# 用 find 而不是手写包名：本仓按层加目录（offline/extract/methods 这种），新增包不用回来改这里。
-# 四个前缀覆盖 conf/、offline/、online/、embed/ 及其全部子包。
-include = ["conf*", "offline*", "online*", "embed*"]
+# frontend/、backend/data/ 不是 Python 包；scripts/ 与 tests/ 是调试与用例，不是被 import 的库。
+# 用 find 而不是手写包名：本仓按层加目录（backend/offline/extract/methods 这种），新增包不用回来改这里。
+# backend/（含 conf、offline、online）与 service.embed；kev08 自带 pyproject，不进本仓包。
+include = ["backend*", "service", "service.embed*"]
+exclude = ["service.kev08*"]
 
 [tool.pytest.ini_options]
 # 任何用例卡住都必须自己死：faulthandler 超时后打印全部线程栈并退出进程。
@@ -58,5 +59,7 @@ include = ["conf*", "offline*", "online*", "embed*"]
 # 而同一命令正常只要 21s。没有这个到点自己退出的超时开关，卡住只能靠人发现。
 # 注意它按「用例」生效；导入 / 收集阶段就卡住时用 README「跑测试」里那条包装入口。
 # 写在 pyproject.toml 而不是单独的 pytest.ini：pytest 从仓库根收集时只认祖先目录里的配置。
+# 缓存放到 tests/，不要占仓库根。
+cache_dir = "tests/.pytest_cache"
 faulthandler_timeout = 300
 faulthandler_exit_on_timeout = true

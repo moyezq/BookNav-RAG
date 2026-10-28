@@ -27,8 +27,12 @@ _Avoid_: 本仓库、自建系统、上游
 _Avoid_: 标准架构、教材
 
 **向量模型服务**：
-长驻 HTTP，把文本变成向量。离线向量层入库和在线召回都调它。权重下载与权重目录都在 `embed/`。放在仓库根，不属于 `offline/` 或 `online/`。
-_Avoid_: 向量化层、offline/embed、向量层内部实现模型服务
+长驻 HTTP，把文本变成向量。离线向量层入库和在线召回都调它。实现与权重都在 `service/embed/`。不属于 `backend/offline/` 或 `backend/online/`。
+_Avoid_: 向量化层、把向量服务塞进 backend、offline/embed、把 embed 文件摊在 service/ 根上、向量层内部实现模型服务
+
+**决策模型预备服务**：
+`service/kev08/` 下独立环境的决策模型服务。本阶段不接提问口。
+_Avoid_: 把 kev08 塞进 start.py、把 kev 的 torch 装进本仓环境、scripts/kev08、向量模型服务
 
 ### 离线
 
@@ -46,7 +50,7 @@ _Avoid_: 源适配器、parser_id、一种格式一个适配器、ingest_manual�
 
 **向量层**：
 可分块原文变成向量库。内部分块、调向量模型服务、写入向量存储与 BM25。不托管模型进程，不下权重。KV 存储不在这一层。
-_Avoid_: 文本分块层、向量化层、向量存储层（当作独立离线层）、offline/embed
+_Avoid_: 文本分块层、向量化层、向量存储层（当作独立离线层）、offline/embed、把向量服务塞进 backend
 
 **可分块原文**：
 抽取层的产出。一份正文，加上可选的页列表、目录区间，以及来源元数据。由 collect 写出。
@@ -64,7 +68,7 @@ _Avoid_: Agent 闲聊、聊天室
 
 **检索门面**：
 独立前端服务（`frontend/`）。只调后端轻量 HTTP 接口展示问答与参考资料。不是在线 Python 层，也不是直接查库的入口。
-_Avoid_: 召回层、检索 API、把 frontend 当 `online/` 里的一层、web（旧目录名）
+_Avoid_: 召回层、检索 API、把 frontend 当 `backend/online/` 里的一层、web（旧目录名）
 
 **会话**：
 同一提问口里连续多轮问答。历史只给意图识别用；检索针对本轮问题或改写后的查询。
@@ -105,7 +109,7 @@ _Avoid_: 原子化条目、KV 条目、Excel 行
 _Avoid_: 知识点、原子化条目、Excel 行
 
 **本地向量库**：
-知识块向量的后端。现状是 `data/lancedb/` 里一张 `chunks` 表；一行同时有向量和命中字段。按来源替换写入。
+知识块向量的后端。现状是 `backend/data/lancedb/` 里一张 `chunks` 表；一行同时有向量和命中字段。按来源替换写入。
 _Avoid_: 知识库、step5 JSON、Faiss 文件
 
 **Hash 向量**：

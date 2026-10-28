@@ -1,14 +1,14 @@
 """
 生成可再分发的演示手册 PDF（自造内容，非第三方版权）。
-写出 data/source/demo_handbook.pdf 后退出。不入库、不起服务。
+写出 backend/data/source/demo_handbook.pdf 后退出。不入库、不起服务。
 
 怎么跑（本文件入口）
   职责：用 pymupdf 画目录页 + 正文页，写入 SOURCE_DIR / demo_handbook.pdf。
   入口步骤：
-    1. build_pdf — TOC_ENTRIES + BODY_PAGES → data/source/demo_handbook.pdf。
+    1. build_pdf — TOC_ENTRIES + BODY_PAGES → backend/data/source/demo_handbook.pdf。
   输入：下面常量 TOC_ENTRIES / BODY_PAGES。
   前置：本仓环境能 import pymupdf（pymupdf4llm 的依赖）。
-  产出：data/source/demo_handbook.pdf（6 页：目录 + 5 节正文）。
+  产出：backend/data/source/demo_handbook.pdf（6 页：目录 + 5 节正文）。
   跑法：仓库根 uv run python scripts/ingest/make_demo_pdf.py
 """
 
@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
-from conf import SOURCE_DIR
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
+from backend.conf import SOURCE_DIR
 
 # ========== 按需修改 ==========
 OUT_PATH: Final[Path] = SOURCE_DIR / "demo_handbook.pdf"
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     faulthandler.dump_traceback_later(RUN_LIMIT_SEC, exit=True)
     sys.stdout.reconfigure(encoding="utf-8")
 
-    # 1. TOC_ENTRIES + BODY_PAGES → data/source/demo_handbook.pdf
+    # 1. TOC_ENTRIES + BODY_PAGES → backend/data/source/demo_handbook.pdf
     build_pdf(OUT_PATH)
     print(f"[1] 已写入 {OUT_PATH.relative_to(conf.ROOT)}（{len(BODY_PAGES) + 1} 页）", flush=True)
     print("下一步：python scripts/ingest/ingest.py", flush=True)

@@ -7,7 +7,7 @@
          hit 样本必带 source 与 pages、负与闲聊样本不带 source/pages、requires_sources 只引用
          样本文件自己声明的来源；
       2. 多轮样本的 turns 形状与图写进 state 的轮次一致（question / text / answer / route /
-         filters / tags）——少 answer 键会让 online.intent.classify.format_turns 抛 KeyError，
+         filters / tags）——少 answer 键会让 backend.online.intent.classify.format_turns 抛 KeyError，
          评测会在中途失败而不是给出结论（本条是实测踩到过的注意点）；
       3. 命中判据按来源与页：来源对但页不相交不算中、页相交但来源不对也不算中；
       4. calibrate_threshold 的扫点真有分辨力：负样本余弦全在正样本之下时必须报出
@@ -23,7 +23,7 @@ import json
 
 import pytest
 
-from online.intent.classify import format_turns
+from backend.online.intent.classify import format_turns
 from scripts.eval.eval_kb import SAMPLES_PATH, _hit_at, _pages_overlap, calibrate_threshold, load_samples
 
 # 样本文件里允许出现的分组；新加分组要连测试一起改，避免拼错组名还静默算数
@@ -37,7 +37,7 @@ GROUPS = {
     "neg-outdomain",
     "neg-near-domain",
 }
-# 图写进 state 的轮次字段（online/graph.py 的 generate 节点）；format_turns 会读 question 与 answer
+# 图写进 state 的轮次字段（backend/online/graph.py 的 generate 节点）；format_turns 会读 question 与 answer
 TURN_KEYS = {"question", "text", "answer", "route", "filters", "tags"}
 
 

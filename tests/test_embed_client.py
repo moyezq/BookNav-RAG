@@ -2,7 +2,7 @@
 """
 embedding HTTP 客户端的分批约定：整个库不许塞进一个请求。
 
-职责：锁定 offline/vector/store.py::HttpEmbedder.embed_texts——
+职责：锁定 backend/offline/vector/store.py::HttpEmbedder.embed_texts——
       1. 按 request_batch 切多次 POST，顺序拼回，结果顺序与输入一致；
       2. 段数不超过一批时只发一次；
       3. request_batch=0 才退回「整批一个请求」；
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from offline.vector.store import HttpEmbedder
+from backend.offline.vector.store import HttpEmbedder
 
 URL = "http://127.0.0.1:8030/v1/embeddings"
 
@@ -50,7 +50,7 @@ def posted(monkeypatch) -> list:
         calls.append({"input": json["input"], "timeout": timeout, "url": url})
         return _FakeResponse(json["input"])
 
-    monkeypatch.setattr("offline.vector.store.requests.post", fake_post)
+    monkeypatch.setattr("backend.offline.vector.store.requests.post", fake_post)
     return calls
 
 

@@ -16,7 +16,7 @@
 
 ### 当时的情况
 
-开发初期图省事。入口脚本各写一份 HOST / PORT / 路径，后来又想「收进一份 yaml 就整齐了」，于是 `conf/config.yaml` 里同时出现本机根路径、监听地址、anyurl2text 地址。抽取还委托给外仓时，甚至用 `ANYURL2TEXT_ENV` 去读**另一个仓**的 `.env`，把那边的键整份注进本进程。
+开发初期图省事。入口脚本各写一份 HOST / PORT / 路径，后来又想「收进一份 yaml 就整齐了」，于是 `backend/conf/config.yaml` 里同时出现本机根路径、监听地址、anyurl2text 地址。抽取还委托给外仓时，甚至用 `ANYURL2TEXT_ENV` 去读**另一个仓**的 `.env`，把那边的键整份注进本进程。
 
 ### 为什么会这样
 
@@ -31,10 +31,10 @@
 
 按「为什么会变」拆开，只留四个落点：
 
-- 项目根：`conf/base.py` 用 `__file__` 推算，不写盘符。
-- 本服务 host / port：写在 `online/server.py` / `embed/server.py`。
-- 相对数据目录、向量库目录：进仓的 `conf/config.yaml`。权重目录是 `embed/models/`（下载脚本同目录），不进 yaml。
-- 第三方地址和密钥：只读本仓 `.env`（模板 `.env_example` 进仓）。`conf.apply_env()` 是唯一读取点。
+- 项目根：`backend/conf/base.py` 用 `__file__` 推算，不写盘符。
+- 本服务 host / port：写在 `backend/online/server.py` / `service/embed/server.py`。
+- 相对数据目录、向量库目录：进仓的 `backend/conf/config.yaml`。权重目录是 `service/embed/models/`（下载脚本同目录），不进 yaml。
+- 第三方地址和密钥：只读本仓 `.env`（模板 `.env_example` 进仓）。`backend.conf.apply_env()` 是唯一读取点。
 
 抽取和外仓解耦之后，读外仓 `.env` 的兜底删掉。换目录不用改配置；密钥进不了仓。
 
@@ -44,11 +44,11 @@
 
 ### 出了什么问题
 
-项目根已经只在 `conf/base.py` 推算，启动文件不要再算一遍。可是 `scripts/` 里的入库、评测一打开，仍常见几行「先把仓库根插进 `sys.path`，再 import conf」。看起来像每个脚本偷偷写了第二份 ROOT。
+项目根已经只在 `backend/conf/base.py` 推算，启动文件不要再算一遍。可是 `scripts/` 里的入库、评测一打开，仍常见几行「先把仓库根插进 `sys.path`，再 import backend.conf as conf」。看起来像每个脚本偷偷写了第二份 ROOT。
 
 ### 当时的情况
 
-长驻服务从仓库根 `python -m online.server` / `python -m embed.server` 启动，解释器把仓库根放进搜索路径，`import conf` 直接成功，`base.py` 再保证 ROOT 在路径里。脚本习惯写成 `python scripts/ingest/ingest.py`，从子目录启动。
+长驻服务从仓库根 `python -m` 起对应层包（当时是 `online.server` / `embed.server`），解释器把仓库根放进搜索路径，`import backend.conf as conf` 直接成功，`base.py` 再保证 ROOT 在路径里。脚本习惯写成 `python scripts/ingest/ingest.py`，从子目录启动。
 
 ### 为什么会这样
 
@@ -61,7 +61,7 @@
 
 ### 最后怎么解决
 
-从仓库根 `python -m` 起的层包入口直接 `import conf`。`scripts/` 里只插仓库根以便找到配置包（场景子目录是上三级），不要在脚本里再赋盘符。插完立刻从 `conf/base.py` 读 ROOT。层模块不要自己改搜索路径，假定入口已经做过。项目根仍然只有一处推算。
+从仓库根 `python -m` 起的层包入口直接 `import backend.conf as conf`。`scripts/` 里只插仓库根以便找到配置包（场景子目录是上三级），不要在脚本里再赋盘符。插完立刻从 `backend/conf/base.py` 读 ROOT。层模块不要自己改搜索路径，假定入口已经做过。项目根仍然只有一处推算。
 
 ---
 

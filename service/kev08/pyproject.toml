@@ -1,0 +1,24 @@
+# kev08 的独立环境：只在 service/kev08 里用，不参与本仓的 uv 项目。
+# 为什么单独一份：本仓钉 torch==2.14.0（向量服务用），kev 权重要 torch>=2.6,<2.9，两个区间没有交集。
+# 这里不依赖上游 kev 包：服务与推理在本目录的 model_kev08.py / serve_kev08.py 里自实现。
+[project]
+name = "kev08-harness"
+version = "0.1.0"
+description = "Kev-0.8B 本地下载 / 自实现服务 / 探针的临时环境，不进产品链路"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    # 推理：底座前向 + LoRA 合入
+    "torch>=2.6,<2.9",
+    "transformers>=5.17,<6",
+    "peft>=0.21",
+    "accelerate>=1.15",
+    # 本目录脚本
+    "modelscope>=1.40",  # download_kev08.py
+    "requests>=2.31",  # probe_kev08.py
+    # 服务：serve_kev08.py
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[tool.uv]
+package = false  # 本目录不是包，只是依赖集合

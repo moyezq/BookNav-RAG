@@ -16,14 +16,14 @@
     5. 原文里出现过、但 items 尚未覆盖的 URL 补进每一块。
     6. 每块再调 LLM，把细条目重组成更利于一次命中的检索行。
     7. {index, content} → {key, value}，写入 step7_knowledge_kv.json 与 kv_store.json。到此停止。
-  一条 text 样本：1～2 步同上；随后写可分块原文并调向量层写入 data/lancedb。不写 KV。
+  一条 text 样本：1～2 步同上；随后写可分块原文并调向量层写入 backend/data/lancedb。不写 KV。
 
   例子（输入就是下面的常量；换文件或模型会变）
-    FILE_URL 为空、LOCAL_FILE 指向 data/source 下一份能被 anyurl2text 抽正文的文件，
+    FILE_URL 为空、LOCAL_FILE 指向 backend/data/source 下一份能被 anyurl2text 抽正文的文件，
     PIPELINE=knowledge。
-      期望：data/result/kv/step7_knowledge_kv.json 是非空列表，原文里的 URL 出现在某条 value。
+      期望：backend/data/result/kv/step7_knowledge_kv.json 是非空列表，原文里的 URL 出现在某条 value。
     同一份源、PIPELINE=text。
-      期望：data/result/<source>/chunkable_source.json 已写，随后写入 data/lancedb；不写 KV。
+      期望：backend/data/result/<source>/chunkable_source.json 已写，随后写入 backend/data/lancedb；不写 KV。
 
 怎么跑（本文件入口；编号和上面「一条样本」不是同一套）
   职责：按顶部常量抽一份源，把原理前几步跑完后退出。生产入库走 scripts/ingest/ingest.py。
@@ -35,11 +35,11 @@
        → retrieve_rebuild → write_kv（原理 3～7）。
   输入：下面常量 PIPELINE / FILE_URL / LOCAL_FILE。
   前置：anyurl2text 已起；DEEPSEEK_API_KEY 在进程环境或本仓 .env。
-        text 入库还需 python -m embed.server。
-  产出：data/result/kv/step1_extract_response.json、step2_extracted.txt；
+        text 入库还需 python -m service.embed.server。
+  产出：backend/data/result/kv/step1_extract_response.json、step2_extracted.txt；
         knowledge 另有 step5_atomic_chunks.json、step6_retrieve_rows.json、
         step7_knowledge_kv.json、kv_store.json；
-        text 另有 data/result/<source>/chunkable_source.json 与 data/lancedb。
+        text 另有 backend/data/result/<source>/chunkable_source.json 与 backend/data/lancedb。
   对外：extract_text … write_kv；write_url_chunkable_source；call_chat_json。
   跑法：仓库根 uv run python scripts/url_to_knowledge.py
         到点 RUN_LIMIT_SEC 打全部线程栈并退出（本脚本按块调 LLM，默认 5 分钟不够）。
@@ -60,8 +60,8 @@ from urllib.parse import urlparse
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
-from conf import (
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
+from backend.conf import (
     ANYURL2TEXT_URL,
     CHAT_API_URL,
     CHAT_MODEL_NAME,
@@ -69,17 +69,17 @@ from conf import (
     RESULT_DIR as KB_RESULT_DIR,
     SOURCE_DIR,
 )
-from offline.extract.enrich import infer_ingest_tags
-from offline.store.kv_store import LocalKvStore
-from offline.vector.chunk import split_text_for_kind
-from offline.vector.entrance import run_vector
+from backend.offline.extract.enrich import infer_ingest_tags
+from backend.offline.store.kv_store import LocalKvStore
+from backend.offline.vector.chunk import split_text_for_kind
+from backend.offline.vector.entrance import run_vector
 
 RESULT_DIR = KB_RESULT_DIR / "kv"
 
 # ========== 按需修改 ==========
 PIPELINE: Final[Literal["text", "knowledge"]] = "knowledge"
 FILE_URL: Final[str] = ""  # 有值走 POST /extract
-LOCAL_FILE: Final[Path] = SOURCE_DIR / "sample_declaration.txt"  # 改成 data/source 里实际有的文件
+LOCAL_FILE: Final[Path] = SOURCE_DIR / "sample_declaration.txt"  # 改成 backend/data/source 里实际有的文件
 DEEPSEEK_API_KEY: Final[str] = ""  # 留空：环境变量 / 本仓 .env
 # KV 单块原文更长，不用在线问答的 120s / 2048 tokens
 CHAT_TIMEOUT_SEC: Final[int] = 600
@@ -328,7 +328,7 @@ def clean_atomic_items(items: list[dict]) -> list[KnowledgeItem]:
 
 def write_result(filename: str, text: str) -> Path:
     """
-    把本步产物写到 data/result/kv/<filename>。
+    把本步产物写到 backend/data/result/kv/<filename>。
 
     功能：确保 kv 目录存在后写 UTF-8 文本。
     应用场景：各步写进磁盘共用。
@@ -453,7 +453,7 @@ def write_url_chunkable_source(text_data: TextData) -> ChunkableSource:
     """
     URL 适配器吐可分块原文（无页，用 text）。
 
-    功能：写 data/result/<source>/chunkable_source.json。
+    功能：写 backend/data/result/<source>/chunkable_source.json。
     应用场景：PIPELINE=text，write_extracted 之后。
     输入：text_data — write_extracted 的 {kind, text, urls}。
     输出：可分块原文对象。
@@ -484,7 +484,7 @@ def split_chunks(text_data: TextData) -> list[str]:
     输出：块文本列表。
     异常：分块为空 → ValueError。
     """
-    # 切分实现在 offline/vector/chunk.py，本步只选 kind 并检查非空
+    # 切分实现在 backend/offline/vector/chunk.py，本步只选 kind 并检查非空
     chunks = split_text_for_kind(text_data["text"], text_data["kind"], max_doc_tokens=MAX_DOC_TOKENS)
     if not chunks:
         raise ValueError("原文分块为空")
@@ -681,10 +681,10 @@ if __name__ == "__main__":
 
     # 1. 抽原文：FILE_URL 或 LOCAL_FILE → extract_payload
     extract_payload = extract_text()
-    # 2. 扫 URL、写原文 → data/result/kv/step2_extracted.txt
+    # 2. 扫 URL、写原文 → backend/data/result/kv/step2_extracted.txt
     text_data = write_extracted(extract_payload)
     if PIPELINE == "text":
-        # 3. 可分块原文 → 向量层写入 data/lancedb
+        # 3. 可分块原文 → 向量层写入 backend/data/lancedb
         source_obj = write_url_chunkable_source(text_data)
         run_vector(KB_RESULT_DIR / source_obj["source"] / "chunkable_source.json")
         print(f"完成 text kind={text_data['kind']} source={source_obj['source']}", flush=True)
@@ -693,10 +693,10 @@ if __name__ == "__main__":
         chunks = split_chunks(text_data)
         # 4. LLM 原子化
         atomic_chunks = atomic_extract(chunks, text_data)
-        # 5. 补漏 URL → data/result/kv/step5_atomic_chunks.json
+        # 5. 补漏 URL → backend/data/result/kv/step5_atomic_chunks.json
         atomic_chunks = fill_missing_urls(atomic_chunks, text_data)
-        # 6. LLM 检索重组 → data/result/kv/step6_retrieve_rows.json
+        # 6. LLM 检索重组 → backend/data/result/kv/step6_retrieve_rows.json
         retrieve_rows = retrieve_rebuild(atomic_chunks, text_data["kind"])
-        # 7. KV 条目 → data/result/kv/step7_knowledge_kv.json
+        # 7. KV 条目 → backend/data/result/kv/step7_knowledge_kv.json
         kv_list = write_kv(retrieve_rows)
         print(f"完成 knowledge items={len(kv_list)}", flush=True)

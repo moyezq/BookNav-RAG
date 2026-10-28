@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from online.generate.answer import hits_contain_query_term, should_refuse
-from online.recall.retrieve import EMBED_UNAVAILABLE, KnowledgeBase, retrieve_hits
-from online.recall.retrieve import _build_embedder  # noqa: F401  — 说明降级用的是同一个构造器
+from backend.online.generate.answer import hits_contain_query_term, should_refuse
+from backend.online.recall.retrieve import EMBED_UNAVAILABLE, KnowledgeBase, retrieve_hits
+from backend.online.recall.retrieve import _build_embedder  # noqa: F401  — 说明降级用的是同一个构造器
 
 # 指向必然连不上的地址：本机没有服务监听 1 端口
 DEAD_EMBED_URL = "http://127.0.0.1:1/v1/embeddings"
@@ -58,7 +58,7 @@ def _build_knowledge_base() -> KnowledgeBase:
     knowledge_base.embedder_name = "bge-m3"
     knowledge_base.dim = 1024
     knowledge_base.records = records
-    from offline.vector.store import Bm25Index
+    from backend.offline.vector.store import Bm25Index
 
     knowledge_base.bm25 = Bm25Index()
     knowledge_base.bm25.build([(record["id"], record["text"]) for record in records])
@@ -68,7 +68,7 @@ def _build_knowledge_base() -> KnowledgeBase:
 @pytest.fixture()
 def dead_embed_url(monkeypatch):
     """把 embedding 地址换成必失败地址，等价于 8030 挂掉。"""
-    monkeypatch.setattr("online.recall.retrieve.EMBED_API_URL", DEAD_EMBED_URL)
+    monkeypatch.setattr("backend.online.recall.retrieve.EMBED_API_URL", DEAD_EMBED_URL)
 
 
 def test_向量服务不可用时退化为纯BM25(dead_embed_url):

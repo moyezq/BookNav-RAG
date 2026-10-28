@@ -2,8 +2,8 @@
 """
 源文件入口的扩展名允许清单。
 
-职责：锁定 offline/extract/entrance.py::list_source_files 的三件事——
-      1. 不在允许清单里的后缀（`data/source/README.txt` 这类说明文件）不进抽取，且跳过的文件名要打出来；
+职责：锁定 backend/offline/extract/entrance.py::list_source_files 的三件事——
+      1. 不在允许清单里的后缀（`backend/data/source/README.txt` 这类说明文件）不进抽取，且跳过的文件名要打出来；
       2. 一个可入库的都没有 → FileNotFoundError，消息里给出支持的后缀；
       3. 后缀大小写不敏感（Windows 上 `手册.PDF` 本来就该入库）。
       为什么要有这条：加允许清单之前 README.txt 会被当成源进抽取，在路由被拒后
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from offline.extract import entrance
+from backend.offline.extract import entrance
 
 
 def _make_sources(work_dir, names: list[str]):

@@ -1,7 +1,7 @@
 """
 入库产物验收：只读检查一份来源的抽取产出与分块产出，回答「这一轮入库有没有坏」。不写库，不调模型。
 
-职责：读 data/result/<来源>/chunkable_source.json、step4_chunks.json 与 data/lancedb 的 chunks 表，
+职责：读 backend/data/result/<来源>/chunkable_source.json、step4_chunks.json 与 backend/data/lancedb 的 chunks 表，
       算出一组可核对的数字，对机械可证的不变量做断言并给出非零退出码。不写库，不调模型。
       这是 P0·2：让已经发生的数据损坏从「靠人手动翻 JSON」变成「一条命令报出来」。
       也是 P1·8：丢页不只报个数，还给每个丢页贴原因标签——「按设计丢的导航页 / 空页」
@@ -30,7 +30,7 @@
        单页自身超限被按段切开时，同一页出现在相邻两块里是正当的，因此不按次数判错，
        只把「跨块共用的页」当指标报出来（本样本改后应为 0）。
   3. 向量层按 source 整批替换写库，所以块 id 唯一性决定替换后能不能定位到具体块。
-  4. 向量层产物 data/lancedb 的 chunks 表：offline/vector/entrance.py 写库成功之后才落 step4，
+  4. 向量层产物 backend/data/lancedb 的 chunks 表：backend/offline/vector/entrance.py 写库成功之后才落 step4，
      所以两边的块 id 与页码必须一模一样。差一个就是「半成品入库」——2026-10-08 真发生过：
      embed 超时失败，step4 已经是新的 138 块，库里还是旧的 137 行、78 块页码不同；
      而在线检索读的是库，于是「分块改好了」这句话在线上并不成立。这一步就是查它。
@@ -38,17 +38,17 @@
   签名法（拿源页正文的连续 CJK 串去块正文里找）只作辅助观察：源页是密集 markdown，
   清洗后签名串可能被打断，会漏判，**不能**用来算页覆盖与页精度。
 
-  公开默认样例：data/result/demo_handbook/（自造手册）。本机大手册验收改顶部 SOURCE_PATH / CHUNKS_PATH。
+  公开默认样例：backend/data/result/demo_handbook/（自造手册）。本机大手册验收改顶部 SOURCE_PATH / CHUNKS_PATH。
 
 怎么跑（本文件入口）
   职责：读三个产出，打印一组数字与判定，按检查结果决定退出码。
   入口步骤：
     1. load_inputs — 读可分块原文与分块产出。
     2. check_ingest — 按原理 1～3 算页覆盖、丢页原因分类、页精度、id 唯一性、token 分布、tags 唯一数。
-    3. load_store_records / check_store_sync — 读 data/lancedb 同来源的块，按原理 4 比 id 与页码。
+    3. load_store_records / check_store_sync — 读 backend/data/lancedb 同来源的块，按原理 4 比 id 与页码。
     4. 打印报告；硬不变量被打破时 exit 1。
   输入：下面常量 SOURCE_PATH / CHUNKS_PATH；库目录取 conf.LANCEDB_DIR。
-  前置：无。不调模型；库同步那一步要求 data/lancedb 已入库（读不到即算未过）。
+  前置：无。不调模型；库同步那一步要求 backend/data/lancedb 已入库（读不到即算未过）。
   产出：控制台报告；退出码 0=通过，1=有硬断言未过（STRICT 时任一问题都算未过）。
   对外：check_ingest、classify_missing_pages 与 check_store_sync（纯函数，返回结果 dict，供 pytest 直接调用）。
   跑法：仓库根 uv run python scripts/ingest/verify_ingest.py
@@ -65,9 +65,9 @@ from pathlib import Path
 from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 进 sys.path；库目录取 conf.LANCEDB_DIR
+import backend.conf as conf  # ROOT 进 sys.path；库目录取 conf.LANCEDB_DIR
 
-from offline.vector.chunk import (
+from backend.offline.vector.chunk import (
     NAVIGATION_CHAPTER_COVER,
     clean_page_text,
     estimate_tokens_by_chars,
@@ -76,8 +76,8 @@ from offline.vector.chunk import (
 )
 
 # ========== 按需修改 ==========
-SOURCE_PATH: Final[str] = "data/result/demo_handbook/chunkable_source.json"
-CHUNKS_PATH: Final[str] = "data/result/demo_handbook/step4_chunks.json"
+SOURCE_PATH: Final[str] = "backend/data/result/demo_handbook/chunkable_source.json"
+CHUNKS_PATH: Final[str] = "backend/data/result/demo_handbook/step4_chunks.json"
 STRICT: Final[bool] = False
 RUN_LIMIT_SEC: Final[int] = 300
 # 签名串最短长度；太短会在别的页里偶然命中
@@ -460,12 +460,12 @@ def check_store_sync(source: str, chunks: list[dict], records: list[dict]) -> di
     hard_problems = []
     if only_in_step4:
         hard_problems.append(
-            f"库里缺 {len(only_in_step4)} 块（step4 有、data/lancedb 没有）：{only_in_step4[:5]}；"
+            f"库里缺 {len(only_in_step4)} 块（step4 有、backend/data/lancedb 没有）：{only_in_step4[:5]}；"
             f"入库没写完，把 scripts/ingest/ingest.py 顶部 VECTOR_ONLY 改成 True 再跑"
         )
     if only_in_store:
         hard_problems.append(
-            f"库里多 {len(only_in_store)} 块（data/lancedb 有、step4 没有）：{only_in_store[:5]}；"
+            f"库里多 {len(only_in_store)} 块（backend/data/lancedb 有、step4 没有）：{only_in_store[:5]}；"
             f"这份来源没被整批替换过"
         )
     if page_mismatches:
@@ -544,12 +544,12 @@ def load_store_records(lancedb_dir: Path) -> list[dict]:
 
     功能：复用 LanceVectorStore.load_payload（只读 payload 列，不读 vector 列、不建 BM25）。
     应用场景：命令行入口的库同步核对。
-    输入：lancedb_dir — data/lancedb 目录。
+    输入：lancedb_dir — backend/data/lancedb 目录。
     输出：记录列表，每条含 id / text / metadata / source / pages。
     异常：表缺失或没有行 → FileNotFoundError；embedder 不一致 → ValueError。
     """
     # 重依赖只在这个入口导入：lancedb 一导入就起 asyncio 桥与线程池，纯函数与单测不必付这个代价
-    from offline.vector.store import LanceVectorStore
+    from backend.offline.vector.store import LanceVectorStore
 
     records, _embedder_name, _dim = LanceVectorStore(lancedb_dir).load_payload()
     return records
@@ -584,7 +584,7 @@ if __name__ == "__main__":
     # 2. 页覆盖、丢页分类、页精度、id、token、tags
     result = check_ingest(source_obj, chunks)
     print("[2] check_ingest 完成", flush=True)
-    # 3. 读 data/lancedb 同来源的块，比 id 与页码
+    # 3. 读 backend/data/lancedb 同来源的块，比 id 与页码
     try:
         records = load_store_records(conf.LANCEDB_DIR)
         store_sync = check_store_sync(source_obj.get("source", ""), chunks, records)

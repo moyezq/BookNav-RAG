@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-pytest 引导：把仓库根放进导入路径，让测试能 import conf 与各层模块；并提供可写的临时目录夹具。
+pytest 引导：把仓库根放进导入路径，让测试能 import backend.conf as conf 与各层模块；并提供可写的临时目录夹具。
 
 职责：只在收集测试前改 sys.path；不 mock 业务、不改环境变量（.env 读取仍走 conf 自己的逻辑）。
       另提供 work_dir —— 沙箱里 pytest 自带的 tmp_path 用不了，原因见该夹具的 docstring。

@@ -78,7 +78,7 @@ def step2_check_frontend() -> bool:
 
 def step3_check_weights() -> bool:
     """权重目录里要有 pytorch_model.bin 或 model.safetensors。"""
-    from embed import MODEL_DIR
+    from service.embed import MODEL_DIR
 
     has_bin = (MODEL_DIR / "pytorch_model.bin").is_file()
     has_safe = (MODEL_DIR / "model.safetensors").is_file()
@@ -86,23 +86,23 @@ def step3_check_weights() -> bool:
         print(f"向量权重：{MODEL_DIR}")
         return True
     print(f"未找到向量权重：{MODEL_DIR}/pytorch_model.bin 或 model.safetensors")
-    print("下一步：python embed/download_embed.py")
+    print("下一步：python service/embed/download_embed.py")
     return False
 
 
 def step4_check_knowledge_base() -> bool:
     """问答进程启动时要读非空的 chunks 表；没有就别起，避免立刻崩。"""
-    import conf
-    from offline.vector.store import LanceVectorStore
+    import backend.conf as conf
+    from backend.offline.vector.store import LanceVectorStore
 
     store = LanceVectorStore(conf.LANCEDB_DIR)
     try:
         records, embedder_name, dim = store.load_payload()
     except FileNotFoundError as exc:
         print(f"尚未入库：{exc}")
-        print("下一步（样例 PDF 已在 data/source/demo_handbook.pdf）：")
+        print("下一步（样例 PDF 已在 backend/data/source/demo_handbook.pdf）：")
         print("  1. 确认根目录 .env 已填 DEEPSEEK_API_KEY（入库抽标签与问答都要用）")
-        print("  2. 另开终端起向量服务：uv run python -m embed.server")
+        print("  2. 另开终端起向量服务：uv run python -m service.embed.server")
         print("  3. uv run python scripts/ingest/ingest.py")
         print("  4. 停掉临时向量服务后，再跑 uv run python start.py")
         return False
@@ -125,13 +125,13 @@ def step5_check_ports() -> bool:
 def step6_start_embed() -> subprocess.Popen:
     """起向量服务（加载模型后才监听端口）。"""
     print(f"启动向量服务 → {EMBED_URL}")
-    return subprocess.Popen([sys.executable, "-m", "embed.server"], cwd=str(PROJECT_DIR))
+    return subprocess.Popen([sys.executable, "-m", "service.embed.server"], cwd=str(PROJECT_DIR))
 
 
 def step7_start_ask() -> subprocess.Popen:
     """起问答服务。"""
     print(f"启动问答服务 → {ASK_DOCS_URL}")
-    return subprocess.Popen([sys.executable, "-m", "online.server"], cwd=str(PROJECT_DIR))
+    return subprocess.Popen([sys.executable, "-m", "backend.online.server"], cwd=str(PROJECT_DIR))
 
 
 def step8_start_web() -> subprocess.Popen:

@@ -2,7 +2,7 @@
 """
 印刷目录页的挑选：目录页数不固定，不许写死「只读前 15 页」。
 
-职责：锁定 offline/extract/methods/pdf.py::_select_catalogue_pages 的四件事——
+职责：锁定 backend/offline/extract/methods/pdf.py::_select_catalogue_pages 的四件事——
       1. 目录超过 15 页时全部挑进来（写死 15 页会把后半本书并进倒数第二个标题）；
       2. 目录之后的正文页不会被当成目录页；
       3. 续页不重复「目 录」表头也算目录页（紧接上一页目录页即可）；
@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from offline.extract.methods.pdf import (
+from backend.offline.extract.methods.pdf import (
     _build_catalogue_ranges,
     _extract_catalogue_lines,
     _select_catalogue_pages,

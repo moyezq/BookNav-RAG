@@ -1,0 +1,6 @@
+# 各环境相同的本项目公共常量。不要写 ROOT、host、port、第三方地址、密钥。
+# 权重目录不在这里：在 service/embed/models/（下载脚本同目录）。
+
+data_source: data/source
+data_result: data/result
+data_lancedb: data/lancedb

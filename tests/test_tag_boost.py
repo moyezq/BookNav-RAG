@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import pytest
 
-from conf import TAG_BOOST_MAX
-from offline.vector.store import Bm25Index
-from online.filter.tags import empty_filters
-from online.recall.retrieve import KnowledgeBase, _rrf_fuse
+from backend.conf import TAG_BOOST_MAX
+from backend.offline.vector.store import Bm25Index
+from backend.online.filter.tags import empty_filters
+from backend.online.recall.retrieve import KnowledgeBase, _rrf_fuse
 
 QUERY_VECTOR = [1.0, 0.0]
 

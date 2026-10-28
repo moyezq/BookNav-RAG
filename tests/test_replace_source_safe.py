@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from offline.vector.store import WRITING_MARKER, LanceVectorStore
+from backend.offline.vector.store import WRITING_MARKER, LanceVectorStore
 
 
 def _chunk(chunk_id: str, text: str = "旧正文。") -> dict:

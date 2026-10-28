@@ -15,11 +15,11 @@
 怎么跑（本文件入口；编号和上面例子不是同一套）
   职责：开库一次，固定 session，循环 input 直到空行或 q。
   入口步骤：
-    1. open_knowledge_base — 读 data/lancedb，只做一次。
+    1. open_knowledge_base — 读 backend/data/lancedb，只做一次。
     2. 循环：input → run_ask_graph（带 session）→ print_turn。
   输入：键盘；不覆盖意图标签。
-  前置：已入库；python -m embed.server 已起；生成需 Chat API key。
-  产出：控制台每一轮一块「结果」；召回调试仍写 data/result/qa/step2_hits.json（只留最后一条）。
+  前置：已入库；python -m service.embed.server 已起；生成需 Chat API key。
+  产出：控制台每一轮一块「结果」；召回调试仍写 backend/data/result/qa/step2_hits.json（只留最后一条）。
   对外：无。print_turn 在同目录 query_kb.py。
   跑法：仓库根 uv run python scripts/ask/chat_kb.py
         交互对话可能超过默认 5 分钟，RUN_LIMIT_SEC=3600。
@@ -34,10 +34,10 @@ from typing import Final
 from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
 
-from online.graph import run_ask_graph
-from online.recall.retrieve import open_knowledge_base
+from backend.online.graph import run_ask_graph
+from backend.online.recall.retrieve import open_knowledge_base
 from scripts.ask.query_kb import print_turn
 
 RUN_LIMIT_SEC: Final[int] = 3600

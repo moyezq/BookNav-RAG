@@ -2,7 +2,7 @@
 """
 在线检索核心的单元测试（不调 LLM、不调向量服务）。
 
-职责：锁定 online/graph.py 里两件与「评测到底测了什么」直接相关的事——
+职责：锁定 backend/online/graph.py 里两件与「评测到底测了什么」直接相关的事——
       1. 过滤对象归一化：dict 与 HTTP 层的 Pydantic 对象都要认（这是 O5 那类静默出错的来源）；
       2. ask_once_core 的闲聊分支必须在召回之前返回：注入 chitchat 时不许碰知识库。
          这一条就是 P0·3 验收「注入 chitchat 后评测必须失败」的机内版本。
@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-from online.graph import _normalize_filters, ask_once_core
-from online.schema import AskFilters, FilterTag
+from backend.online.graph import _normalize_filters, ask_once_core
+from backend.online.schema import AskFilters, FilterTag
 
 
 class _ExplodingKnowledgeBase:

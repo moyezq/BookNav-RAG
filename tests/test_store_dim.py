@@ -2,11 +2,11 @@
 """
 首次建表的维数校验：256 维的 hash 抢跑一次，整库就锁死。
 
-职责：锁定 offline/vector/store.py::LanceVectorStore.replace_source 的两件事——
+职责：锁定 backend/offline/vector/store.py::LanceVectorStore.replace_source 的两件事——
       1. 首次建表（表还不存在）时，声明维数与实际向量长度不符 → ValueError，且不留半截表；
       2. 已经建过 256 维的表之后再写 1024 维 → ValueError 同时报出两个维数（指向「删库重入库」）。
       为什么要有这条：create_table 分支以前完全不校验，hash（EMBED_DIM=256）抢跑建表后，
-      bge-m3 的 1024 维再也写不进去，只能删 data/lancedb 全量重入。
+      bge-m3 的 1024 维再也写不进去，只能删 backend/data/lancedb 全量重入。
       真库、真 LanceDB，需要写文件的目录用 work_dir（沙箱里 tmp_path 用不了）。
 
 应用场景：改 replace_source 的建表分支之后跑本文件。
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from offline.vector.store import LanceVectorStore
+from backend.offline.vector.store import LanceVectorStore
 
 
 def _chunk(chunk_id: str) -> dict:

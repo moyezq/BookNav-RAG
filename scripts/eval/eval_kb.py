@@ -29,11 +29,11 @@
   职责：加载与问答同一份库，按 SAMPLES_PATH 把每条样本的原理前几步跑完再判，然后退出。
   入口步骤：
     1. load_samples — 读样本文件，整个脚本只做一次。
-    2. open_knowledge_base — 读 data/lancedb，只做一次。
+    2. open_knowledge_base — 读 backend/data/lancedb，只做一次。
     3. check_samples — 逐条：意图 → 召回 → 精排 → 同节邻块，再按 expect 判。
     4. CALIBRATE=True 时 calibrate_threshold — 扫拒答阈值。
   输入：下面常量 SAMPLES_PATH / ROUTE_OVERRIDE / SAMPLE_LIMIT / STRICT / CALIBRATE。
-  前置：已入库；python -m embed.server 已起。分类与改写开时要 DEEPSEEK_API_KEY
+  前置：已入库；python -m service.embed.server 已起。分类与改写开时要 DEEPSEEK_API_KEY
         （ROUTE_OVERRIDE 注入时不需分类，改写仍要）。
   产出：控制台分组汇总与阈值扫点；退出码 0=按 STRICT 的判据通过，1=未过。不写进磁盘。
   对外：_hit_at、load_samples、check_samples、calibrate_threshold。
@@ -52,13 +52,13 @@ from pathlib import Path
 from typing import Final, Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
 
-from online.generate.answer import best_vector_score, should_refuse
-from online.graph import ask_once_core
-from online.recall.retrieve import KnowledgeBase, open_knowledge_base
-from online.intent.classify import ROUTE_CHITCHAT
-from conf import REFUSE_MIN_SCORE, TOP_K, USE_REWRITE
+from backend.online.generate.answer import best_vector_score, should_refuse
+from backend.online.graph import ask_once_core
+from backend.online.recall.retrieve import KnowledgeBase, open_knowledge_base
+from backend.online.intent.classify import ROUTE_CHITCHAT
+from backend.conf import REFUSE_MIN_SCORE, TOP_K, USE_REWRITE
 
 # ========== 按需修改 ==========
 SAMPLES_PATH: Final[Path] = Path(__file__).resolve().parent / "eval_samples.json"

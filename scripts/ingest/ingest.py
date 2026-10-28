@@ -2,22 +2,22 @@
 入库：源文件 → 可分块原文 → 向量库。不问答。
 
 原理（按系统流程）
-  离线完整链路是：data/source 一份源 → 抽取层可分块原文 → 向量层知识块 → data/lancedb。
+  离线完整链路是：backend/data/source 一份源 → 抽取层可分块原文 → 向量层知识块 → backend/data/lancedb。
   本脚本逐份串行：先抽取再向量。VECTOR_ONLY=True 时跳过抽取，复用已有 chunkable_source.json。
-  抽取实现在 offline/extract/，向量实现在 offline/vector/。本文件只编排。
+  抽取实现在 backend/offline/extract/，向量实现在 backend/offline/vector/。本文件只编排。
 
-  例子（名单就是下面的 PROCESS_ONLY；空元组 = data/source 全部 PDF）
+  例子（名单就是下面的 PROCESS_ONLY；空元组 = backend/data/source 全部 PDF）
     PROCESS_ONLY=() → 扫全部允许后缀的源，每份写出 chunkable_source.json 再写入 LanceDB。
     VECTOR_ONLY=True → 不重跑抽取与 enrich，只重跑分块与写库。
 
 怎么跑（本文件入口；编号和上面「一条样本」不是同一套）
   职责：按 PROCESS_ONLY 选源，逐份跑抽取与向量，失败记入列表后继续，最后打印成功/失败数。
   入口步骤：
-    1. extract_source — 一份源 → data/result/<stem>/chunkable_source.json（VECTOR_ONLY 时跳过）。
-    2. index_chunks — 可分块原文 → step4_chunks.json 与 data/lancedb chunks 表。
-  输入：data/source/ 下的文件。PROCESS_ONLY 非空则只跑名单里的那几份。
-  前置：python -m embed.server 已起（EMBEDDER_KIND=http）。仅 PDF 本仓抽页。
-  产出：每来源一份 chunkable_source.json、step4_chunks.json；向量写入 data/lancedb。
+    1. extract_source — 一份源 → backend/data/result/<stem>/chunkable_source.json（VECTOR_ONLY 时跳过）。
+    2. index_chunks — 可分块原文 → step4_chunks.json 与 backend/data/lancedb chunks 表。
+  输入：backend/data/source/ 下的文件。PROCESS_ONLY 非空则只跑名单里的那几份。
+  前置：python -m service.embed.server 已起（EMBEDDER_KIND=http）。仅 PDF 本仓抽页。
+  产出：每来源一份 chunkable_source.json、step4_chunks.json；向量写入 backend/data/lancedb。
   对外：report_empty_tags。
   跑法：仓库根 uv run python scripts/ingest/ingest.py
         整库入库可能超过 5 分钟，RUN_LIMIT_SEC=1800。
@@ -33,13 +33,13 @@ from pathlib import Path
 from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-import conf  # ROOT 在 conf.base；读 yaml 与 .env
+import backend.conf as conf  # ROOT 在 conf.base；读 yaml 与 .env
 
-from offline.extract.entrance import list_source_files, run_extract
-from offline.vector.entrance import list_chunkable_paths, run_vector
+from backend.offline.extract.entrance import list_source_files, run_extract
+from backend.offline.vector.entrance import list_chunkable_paths, run_vector
 
 # ========== 按需修改 ==========
-# 非空则只跑名单里的源文件（名字带后缀，与 data/source 下的一致）；空元组则扫 data/source 全部。
+# 非空则只跑名单里的源文件（名字带后缀，与 backend/data/source 下的一致）；空元组则扫 backend/data/source 全部。
 PROCESS_ONLY: Final[tuple[str, ...]] = ()
 # True：跳过抽取，复用已有 chunkable_source.json 只重跑向量层
 VECTOR_ONLY: Final[bool] = False
@@ -55,7 +55,7 @@ def extract_source(source_path: Path) -> Path:
 
     功能：调 extract.entrance.run_extract。
     应用场景：入库第 1 步。
-    输入：source_path — data/source 下的文件。
+    输入：source_path — backend/data/source 下的文件。
     输出：chunkable_source.json 路径。
     """
     print(f"[1] 抽取 {source_path.name}", flush=True)
@@ -69,7 +69,7 @@ def index_chunks(chunkable_path: Path) -> Path:
     一份可分块原文走完向量层。
 
     功能：调 vector.entrance.run_vector。
-    应用场景：入库第 2 步。须已起 python -m embed.server。
+    应用场景：入库第 2 步。须已起 python -m service.embed.server。
     输入：chunkable_path — chunkable_source.json。
     输出：LanceDB 目录路径。
     """
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     print(f"ingest sources={len(source_paths)}", flush=True)
     for source_path in source_paths:
         try:
-            # 1. 抽取 → data/result/<stem>/chunkable_source.json
+            # 1. 抽取 → backend/data/result/<stem>/chunkable_source.json
             chunkable_path = extract_source(source_path)
             # 2. 分块 + 调 8030 + 写入 LanceDB
             index_chunks(chunkable_path)

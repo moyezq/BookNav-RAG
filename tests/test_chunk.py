@@ -2,7 +2,7 @@
 """
 分块与页码的单元测试。
 
-职责：锁定 offline/vector/chunk.py 里三件必须成立的事——
+职责：锁定 backend/offline/vector/chunk.py 里三件必须成立的事——
       1. 超限切出来的每个子块只带自己覆盖的页（P0·5；以前是整节页码复制给每个子块）；
       2. 页归属：一页只归第一条命中的目录区间，导航页不进；
       3. token 估算的当前做法（当前做法若改，这里必须同轮改）。
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from offline.vector.chunk import (
+from backend.offline.vector.chunk import (
     _assemble_pieces_with_pages,
     assign_content_to_catalogue,
     chunks_from_assigned_rows,

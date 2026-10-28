@@ -38,9 +38,9 @@
 
 在线图是确定性节点链。生成节点用 LangChain `prompt | model | parser`。`create_agent` / `create_deep_agent` 只进 `scripts/` 的学习预留位置，不接进提问口。检索不是 Tool。
 
-## ADR-0011 · 2026-09-28 · 代码按离线层与在线层分目录
+## ADR-0011 · 2026-10-28 · 代码按离线层与在线层分目录
 
-新代码进各层的预留位置：抽取 `offline/extract/`，向量 `offline/vector/`，在线各层在 `online/`，向量模型服务在仓库根 `embed/`。不套 `src/`，不用产品仓目录名。不重建 `query/`。
+新代码进各层的预留位置：抽取 `backend/offline/extract/`，向量 `backend/offline/vector/`，在线各层在 `backend/online/`，向量模型服务在 `service/embed/`。仓库根按 backend / frontend / docs / service 分地盘，见 ADR-0038。不套 `src/`，不用产品仓目录名。不重建 `query/`。
 
 ## ADR-0012 · 2026-09-28 · 在线主入口是 HTTP，引用在侧栏
 
@@ -52,7 +52,7 @@
 
 ## ADR-0015 · 2026-10-28 · 提问口不另开 query/
 
-HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命令行调试 `scripts/ask/query_kb.py`，评测 `scripts/eval/eval_kb.py`。不重建 `query/`。
+HTTP 路由在 `backend/online/router.py`；进程入口 `python -m backend.online.server`。命令行调试 `scripts/ask/query_kb.py`，评测 `scripts/eval/eval_kb.py`。不重建 `query/`。
 
 ## ADR-0016 · 2026-09-28 · 抽取方式可插拔，collect 写出可分块原文
 
@@ -60,27 +60,27 @@ HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命
 
 ## ADR-0017 · 2026-09-28 · 分块、向量化、向量存储合并成向量层
 
-离线后半段是一层：可分块原文进，向量库出。目录 `offline/vector/`。与抽取层用磁盘上的 `chunkable_source.json` 相接。KV 存储不进向量层。权威库是 LanceDB，见 ADR-0024。
+离线后半段是一层：可分块原文进，向量库出。目录 `backend/offline/vector/`。与抽取层用磁盘上的 `chunkable_source.json` 相接。KV 存储不进向量层。权威库是 LanceDB，见 ADR-0024。
 
-## ADR-0018 · 2026-10-17 · 向量模型服务独立于离线目录
+## ADR-0018 · 2026-10-28 · 向量模型服务独立于离线目录
 
-入库和提问都要把文本变成向量。实现与进程入口都在 `embed/server.py`，不属于 `offline/` 也不属于 `online/`。从仓库根 `python -m embed.server`。下载是 `embed/download_embed.py`，权重落在同目录 `embed/models/`（不再套一层模型名目录）。离线与在线都 HTTP 调 8030。
+入库和提问都要把文本变成向量。实现与进程入口都在 `service/embed/server.py`，不属于 `backend/offline/` 也不属于 `backend/online/`。从仓库根 `python -m service.embed.server`。下载是 `service/embed/download_embed.py`，权重落在同目录 `service/embed/models/`（不再套一层模型名目录）。离线与在线都 HTTP 调 8030。
 
 ## ADR-0019 · 2026-10-28 · 入库脚本在 scripts/ingest/ingest.py
 
 人对库跑入库，入口是 `python scripts/ingest/ingest.py`。抽取层与向量层只提供函数；脚本按份先抽取再向量。编排放 `scripts/`（按场景分子目录），不放进 `extract/` 或 `vector/`。要跑哪一份源，改该脚本顶部常量，不是系统配置。
 
-## ADR-0020 · 2026-10-17 · 问答入口是 online/server.py，路由进 online/router.py
+## ADR-0020 · 2026-10-28 · 问答入口是 backend/online/server.py，路由进 backend/online/router.py
 
-`online/server.py` 只创建应用、注册路由、lifespan。`POST /api/ask` 与 schema 在 `online/router.py`、`online/schema.py`。该进程唯一 `__main__` 在 `server.py`；不要 `python online/router.py`。
+`backend/online/server.py` 只创建应用、注册路由、lifespan。`POST /api/ask` 与 schema 在 `backend/online/router.py`、`backend/online/schema.py`。该进程唯一 `__main__` 在 `server.py`；不要 `python backend/online/router.py`。
 
 ## ADR-0021 · 2026-10-10 · 密钥与第三方地址进 .env
 
-密钥模板 `.env_example`，本仓 `.env` 不进 git。第三方 URL 与密钥只走根目录 `.env`。不写进 `conf/config.yaml`。只读本仓 `.env`：`conf.apply_env()` 是唯一读取点，顺序是「进程环境变量 → 本仓 `.env`」，只填空缺。抽取解耦（ADR-0034）后已删除按 `ANYURL2TEXT_ENV` 读外仓 `.env` 的兜底；`ANYURL2TEXT_URL` 保留，只剩 KV 实验脚本打 `/extract` 用。
+密钥模板 `.env_example`，本仓 `.env` 不进 git。第三方 URL 与密钥只走仓库根 `.env`。不写进 `backend/conf/config.yaml`。只读本仓 `.env`：`backend.conf.apply_env()` 是唯一读取点，顺序是「进程环境变量 → 本仓 `.env`」，只填空缺。抽取解耦（ADR-0034）后已删除按 `ANYURL2TEXT_ENV` 读外仓 `.env` 的兜底；`ANYURL2TEXT_URL` 保留，只剩 KV 实验脚本打 `/extract` 用。
 
-## ADR-0022 · 2026-10-17 · ROOT 在 base.py，host/port 在启动文件
+## ADR-0022 · 2026-10-28 · ROOT 在 base.py，host/port 在启动文件
 
-从本机推算的 ROOT 与 `sys.path` 只在 `conf/base.py`。本服务 host/port 写在 `online/server.py` / `embed/server.py`。`config.yaml` 只放相对数据目录、向量库目录。权重目录不进 yaml，是 `embed/models/`（与 `embed/download_embed.py` 同目录）。第三方与密钥进 `.env`。层与模块常量见 ADR-0029。
+从本机推算的 ROOT（backend 目录）与 REPO_ROOT（仓库根，写入 `sys.path`）只在 `backend/conf/base.py`。本服务 host/port 写在 `backend/online/server.py` / `service/embed/server.py`。`config.yaml` 只放相对数据目录、向量库目录。权重目录不进 yaml，是 `service/embed/models/`（与 `service/embed/download_embed.py` 同目录）。第三方与密钥进仓库根 `.env`。层与模块常量见 ADR-0029。
 
 ## ADR-0023 · 2026-10-17 · 检索门面指独立前端
 
@@ -88,7 +88,7 @@ HTTP 路由在 `online/router.py`；进程入口 `python -m online.server`。命
 
 ## ADR-0024 · 2026-09-28 · 向量库后端用嵌入式 LanceDB
 
-Windows 本地向量写进 `data/lancedb/`，一张 `chunks` 表同时存向量和命中字段。近邻走 `distance_type("cosine")`。BM25 仍进程内，load 时不把 `vector` 读进 Python。不上第二库。表列 `tags` 为 JSON，见 ADR-0026；`catalogue_title` 给同节邻块，见 ADR-0028。旧库缺这些列须删后重入库。
+Windows 本地向量写进 `backend/data/lancedb/`，一张 `chunks` 表同时存向量和命中字段。近邻走 `distance_type("cosine")`。BM25 仍进程内，load 时不把 `vector` 读进 Python。不上第二库。表列 `tags` 为 JSON，见 ADR-0026；`catalogue_title` 给同节邻块，见 ADR-0028。旧库缺这些列须删后重入库。
 
 ## ADR-0025 · 2026-09-28 · 拒答阈值用向量余弦
 
@@ -102,15 +102,15 @@ Windows 本地向量写进 `data/lancedb/`，一张 `chunks` 表同时存向量�
 
 两路检索各取候选窗口（默认 20），融合也截到该窗口；`rerank_hits` 再截 `TOP_K`。重排只截断、不换序，换交叉编码器时不必改召回截断位置。
 
-现状：文件仍叫 `online/rerank/overlap.py`，函数不换序。
+现状：文件仍叫 `backend/online/rerank/overlap.py`，函数不换序。
 
 ## ADR-0028 · 2026-09-28 · 重排后按目录标题并同节邻块
 
 命中一小节后，生成需要同一目录标题下的前后步骤。`catalogue_title` 写入 LanceDB 表，不进检索命中的字段约定。重排截 `TOP_K` 之后，按来源 + 标题把邻块并进命中 `text` / `pages`，有 token 上限；空标题不并。同一标题在窗口里只留最先出现的那条。
 
-## ADR-0029 · 2026-10-28 · 层与模块常量集中在 conf/base.py
+## ADR-0029 · 2026-10-28 · 层与模块常量集中在 backend/conf/base.py
 
-ROOT 与层、模块的开关、阈值、提示词都进 `conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest/ingest.py`。
+ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `service/embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest/ingest.py`。
 
 ## ADR-0030 · 2026-09-28 · 删掉不起作用的开关，不修通假路径
 
@@ -132,10 +132,14 @@ ROOT 与层、模块的开关、阈值、提示词都进 `conf/base.py`，按层
 
 入库抽出的标签是文档级的、复制到该文档每个块上，只能表达「这份文档讲什么」，不能表达「这个块讲什么」。拿它强制筛选，两头都坏：同字段多值走 AND 时一个块只可能带其中一个值 → 命中 0 → 空命中直接拒答；单文档库上它又等价于零收窄。选定：`source` 仍强制筛选；`filters.tags` 只进排序——命中 N 条的块加 `min(N × TAG_BOOST_PER_HIT, TAG_BOOST_MAX)` 分，不命中的块不丢。命中判定分两路：问句字面出现标签值由代码判（同字段多值都收），字面都没命中才问模型补同义。取代 ADR-0026 的「强制筛选、多对 AND」那半；动态键值、字段名不预置仍有效。
 
-## ADR-0036 · 2026-10-17 · 长驻服务入口在对应层包的 server.py
+## ADR-0036 · 2026-10-28 · 长驻服务入口在对应层包的 server.py
 
-仓库根只留 `start.py` 一键编排。向量入口 `python -m embed.server`，问答入口 `python -m online.server`。host/port 写在这两个文件。不要 `python embed/server.py` 或 `python online/server.py`（sys.path 会指到子目录）。其它模块不留第二份 `__main__` 启动同一进程。跑完即退出的入库 / 评测 / 下载仍在 `scripts/`。取代 ADR-0013。
+仓库根只留 `start.py` 一键编排。向量入口 `python -m service.embed.server`，问答入口 `python -m backend.online.server`。host/port 写在这两个文件。不要 `python service/embed/server.py` 或 `python backend/online/server.py`（sys.path 会指到子目录）。其它模块不留第二份 `__main__` 启动同一进程。跑完即退出的入库 / 评测 / 下载仍在 `scripts/`。取代 ADR-0013。
 
 ## ADR-0037 · 2026-10-17 · 包清单只在 pyproject.toml；环境用 uv
 
 依赖写在 `pyproject.toml`。安装与启动走 `uv sync` / `uv run`。
+
+## ADR-0038 · 2026-10-28 · 仓库按 backend / frontend / docs / service 分地盘
+
+前后端同仓后，仓库根不再直接摊架构层。选定：离线抽取与在线问答进 `backend/`（内部仍按 offline / online 分层，ADR-0011；`conf/` 与 `data/` 也只给后端用）；检索门面仍是 `frontend/`；文档仍是 `docs/`；独立进程服务进 `service/`，按服务分子目录——`embed/` 是主路径向量服务（ADR-0018，不读 `backend/conf`），`kev08/` 是预备的决策模型服务（自带 pyproject，torch 版本与本仓向量服务无交集，不接提问口、不进 `start.py`）。`scripts/`、`tests/`、`start.py`、`.env` 留仓库根。不把 embed 塞进 backend。

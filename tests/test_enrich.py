@@ -2,7 +2,7 @@
 """
 入库标签抽取的解析与「抽空看得见」：锁定 P1·12 的两半。
 
-职责：锁定 offline/extract/enrich.py 的三件事——
+职责：锁定 backend/offline/extract/enrich.py 的三件事——
       1. 抠 JSON 用花括号配对，不贪婪：模型输出「思考 + JSON」「两个 JSON 对象」都要能拿到 tags；
       2. 认不出来返回 []（不抛），来源身份 / 空项 / 重复项 / 非字符串字段都不许把入库打崩；
       3. 抽空**不是静默降级**：解析失败要打出原因与模型原始输出，入库汇总要把这些来源单独列出来。
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from offline.extract import enrich
+from backend.offline.extract import enrich
 from scripts.ingest.ingest import report_empty_tags
 
 # ========== 解析模型输出（P1·12 前半） ==========

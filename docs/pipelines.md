@@ -4,16 +4,16 @@
 
 ## 1. 离线入库
 
-入口 `python scripts/ingest/ingest.py`。每份源：抽取层再向量层。前提：`python -m embed.server` 已启动。改完分块策略只重跑向量层：把该脚本顶部 `VECTOR_ONLY` 改成 `True` 再跑（重复使用已有 `chunkable_source.json`，不重跑抽取，也不重跑 enrich）。层 `entrance.py` 只提供函数，没有 `__main__`。
+入口 `python scripts/ingest/ingest.py`。每份源：抽取层再向量层。前提：`python -m service.embed.server` 已启动。改完分块策略只重跑向量层：把该脚本顶部 `VECTOR_ONLY` 改成 `True` 再跑（重复使用已有 `chunkable_source.json`，不重跑抽取，也不重跑 enrich）。层 `entrance.py` 只提供函数，没有 `__main__`。
 
-只认 `SOURCE_ALLOWED_SUFFIXES`（本阶段 `.pdf`）；不在清单里的文件跳过并打日志。要跑哪几份，改脚本顶部 `PROCESS_ONLY`（空元组 = `data/source` 全部）。非 PDF 在路由拒绝。
+只认 `SOURCE_ALLOWED_SUFFIXES`（本阶段 `.pdf`）；不在清单里的文件跳过并打日志。要跑哪几份，改脚本顶部 `PROCESS_ONLY`（空元组 = `backend/data/source` 全部）。非 PDF 在路由拒绝。
 
 ```text
 scripts/ingest/ingest.py
   extract.entrance.run_extract
     probe → route → methods → enrich → collect    # → chunkable_source.json
   vector.entrance.run_vector
-    chunk → POST 8030 → store                     # → data/lancedb chunks 表
+    chunk → POST 8030 → store                     # → backend/data/lancedb chunks 表
                                                   # 写库成功之后才写 step4_chunks.json
 ```
 
@@ -23,7 +23,7 @@ scripts/ingest/ingest.py
 
 抽取方式只吐文件内容（有页则 `pages[{page,text}]`，无页则 `text`；目录区间可选）。方式不写可分块原文、不抽过滤标签、不分块、不向量、不碰 KV。增方式：加 `methods/` 文件并在路由登记一行。删方式：去掉登记。不按样本文件名切换。
 
-`enrich.py`：从正文抽出 `tags[{field, value}]`，最多 8 条；字段名随文档变，不预置。不把来源身份写成标签。抠 JSON 用花括号配对逐段试解析。抽空打原因与模型原始输出，入库汇总按名字单列，不许混进「成功 N」。实现上借 `online.generate.answer.chat_text`。
+`enrich.py`：从正文抽出 `tags[{field, value}]`，最多 8 条；字段名随文档变，不预置。不把来源身份写成标签。抠 JSON 用花括号配对逐段试解析。抽空打原因与模型原始输出，入库汇总按名字单列，不许混进「成功 N」。实现上借 `backend.online.generate.answer.chat_text`。
 
 `collect.py` 写出可分块原文：必有 `source`、`kind`，以及 `pages[{page, text}]` 或无页时的 `text`；`tags` 可 `[]`。可选：目录区间。可选不进检索约定：`extract_method`、基础信息摘要。
 
@@ -31,15 +31,15 @@ scripts/ingest/ingest.py
 
 有 `pages` 且有目录区间：先按目录分页再按标题拼知识块；否则按段 / 页切。一节超 `MAX_DOC_TOKENS` 切出的每个子块只声明自己覆盖的页（页码块级；任一页只被一个块声明）。整份文档的 tags 写到每个知识块上。不得用手填常量或文件名冒充。`catalogue_title` 写入表列，不进检索命中约定。
 
-客户端按 `EMBED_REQUEST_BATCH` 切批。写库前校验向量维数：`EMBED_DIM_BY_NAME` 登记 embedder → 期望维数；首次建表也过这一关。按来源替换写入 `data/lancedb` 的 `chunks` 表（含 `tags` JSON、`catalogue_title`）。不上第二库。不为每个标签字段加一列。
+客户端按 `EMBED_REQUEST_BATCH` 切批。写库前校验向量维数：`EMBED_DIM_BY_NAME` 登记 embedder → 期望维数；首次建表也过这一关。按来源替换写入 `backend/data/lancedb` 的 `chunks` 表（含 `tags` JSON、`catalogue_title`）。不上第二库。不为每个标签字段加一列。
 
-BM25 与向量并列，对同一批知识块建倒排；倒排在召回 load 时用同一批正文建，不上独立搜索引擎。Hash 向量只为打通流程，不是语义 embedding。换 embedding 维数或 embedder 名须删掉 `data/lancedb` 后重新入库。`EMBEDDER_KIND=hash` 仍可跑通，但不是语义检索。
+BM25 与向量并列，对同一批知识块建倒排；倒排在召回 load 时用同一批正文建，不上独立搜索引擎。Hash 向量只为打通流程，不是语义 embedding。换 embedding 维数或 embedder 名须删掉 `backend/data/lancedb` 后重新入库。`EMBEDDER_KIND=hash` 仍可跑通，但不是语义检索。
 
 KV 抽取吃可分块原文，不吃知识块；实验脚本是 `scripts/url_to_knowledge.py`，不进抽取 `entrance`、不进召回。
 
 ## 2. 在线问答
 
-长驻三个进程：向量 8030、问答 8031、Vite 8032。问答入口永远 `python -m online.server`：该文件只创建 FastAPI、`include_router`、注册 lifespan；`POST /api/ask` 在 `online/router.py`。不要 `python online/router.py`。启动 lifespan：`open_knowledge_base` 一次；重新入库后要重启该进程。改完在线代码同样要重启，MemorySaver 会话会丢。
+长驻三个进程：向量 8030、问答 8031、Vite 8032。问答入口永远 `python -m backend.online.server`：该文件只创建 FastAPI、`include_router`、注册 lifespan；`POST /api/ask` 在 `backend/online/router.py`。不要 `python backend/online/router.py`。启动 lifespan：`open_knowledge_base` 一次；重新入库后要重启该进程。改完在线代码同样要重启，MemorySaver 会话会丢。
 
 HTTP 入 `AskBody{text, session, filters}`，出 `{answer, citations, tags}`。`session` 限 `SESSION_ID_MAX_CHARS`、只含 `[A-Za-z0-9_-]`。命令行 `scripts/ask/query_kb.py`（单轮）与 `scripts/ask/chat_kb.py`（多轮同一 session）共用 `run_ask_graph`。
 
@@ -69,7 +69,7 @@ intent →（route=chitchat 则跳过召回）recall → rerank → generate
 - 两路 RRF 融合，截到候选窗口（`max(TOP_K × CANDIDATE_MULTIPLIER, CANDIDATE_FLOOR)`，默认 20）。不在这一层截 `TOP_K`。
 - 词面兜底：embedding 调不通（`EMBED_UNAVAILABLE`）时不把异常抛给上层，退化为纯 BM25，命中标 `lexical_fallback=True`。向量服务挂掉不许把整个问答口打死（闲聊仍 200）。
 
-调试题材由 `retrieve_hits(write_debug=)` 控制，默认取 `DEBUG_WRITE_QA`（默认关）。打开时写 `data/result/qa/`，文件名带 session（只留 `[A-Za-z0-9_-]`、截到 `DEBUG_TAG_MAX_CHARS`）；评测与测试传 `False`。
+调试题材由 `retrieve_hits(write_debug=)` 控制，默认取 `DEBUG_WRITE_QA`（默认关）。打开时写 `backend/data/result/qa/`，文件名带 session（只留 `[A-Za-z0-9_-]`、截到 `DEBUG_TAG_MAX_CHARS`）；评测与测试传 `False`。
 
 ### 2.3 重排
 

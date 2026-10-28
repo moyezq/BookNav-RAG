@@ -2,7 +2,7 @@
 """
 意图层解析与收窄的单元测试（纯函数，不调 LLM）。
 
-职责：锁定 online/intent/classify.py 里三处不该被模型带偏的地方——
+职责：锁定 backend/online/intent/classify.py 里三处不该被模型带偏的地方——
       1. 模型输出脏 JSON 时的兜底（分类拿不准 → retrieve；筛选认不出 → 不过滤）；
       2. 筛选只能取库内已出现的来源与标签对（_constrain_to_catalog）；
       3. 问句里直接点名来源/标签值时的词面匹配规则（含它现在只能整段匹配的局限）。
@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from online.intent.classify import (
+from backend.online.intent.classify import (
     _constrain_to_catalog,
     _lexical_filters,
     _longest_catalog_hit,

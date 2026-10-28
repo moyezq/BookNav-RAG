@@ -11,7 +11,8 @@
 `uv sync`，再 `uv run python ...`。包清单在 `pyproject.toml`。跑测试先 `uv pip install pytest`。
 AI 在非交互 shell 里跑本仓 Python：`uv run`，或 `uv sync` 之后用 `.venv\Scripts\python.exe`，并设 `PYTHONUTF8=1`。
 
-不给本仓发明命令行参数。长驻服务从仓库根 `uv run python start.py`（一键）启动，或分别 `uv run python -m embed.server` / `uv run python -m online.server`，以及 `cd frontend && npm run dev`。不要 `python embed/server.py` 或 `python online/server.py`（sys.path 会指到子目录）。命令行脚本只当调试。
+不给本仓发明命令行参数。长驻服务从仓库根 `uv run python start.py`（一键）启动，或分别 `uv run python -m service.embed.server` / `uv run python -m backend.online.server`，以及 `cd frontend && npm run dev`。不要 `python service/embed/server.py` 或 `python backend/online/server.py`（sys.path 会指到子目录）。命令行脚本只当调试。
+`service/kev08/` 是预备服务：用它自己的 `pyproject.toml` 与 `.venv`，不要把 kev 的 torch 装进本仓环境，不要 `import` 进提问口，不要塞进 `start.py`。
 问答页视觉规范在 `frontend/DESIGN.md`，不在仓库根。待做方向在 `docs/todo.md`。
 
 ## todo.md
@@ -22,11 +23,11 @@ AI 在非交互 shell 里跑本仓 Python：`uv run`，或 `uv sync` 之后用 `
 
 ## 端口从 8030 连号
 
-向量 8030、问答 8031、Vite 8032、可选 VLM 8033。不要写回 8081 / 8090 / 5173 / 8080。
+向量 8030、问答 8031、Vite 8032、可选 VLM 8033、预备 kev08 8034。不要写回 8081 / 8090 / 5173 / 8080。
 
 ## 只读本仓 .env
 
-`conf.apply_env()` 是唯一读取点。不要读别的仓的 `.env`。密钥模板 `.env_example` 可以进仓；填了密钥的 `.env`、权重不要提交。
+`backend.conf.apply_env()` 是唯一读取点。不要读别的仓的 `.env`。密钥模板 `.env_example` 可以进仓；填了密钥的 `.env`、权重不要提交。
 
 ## 长任务与残留进程
 
@@ -50,8 +51,8 @@ AI 在非交互 shell 里跑本仓 Python：`uv run`，或 `uv sync` 之后用 `
 
 ## 改代码时的硬约束
 
-1. 新代码进目标架构规定的位置。不要重建 `query/`。离线不要再拆独立的分块层 / 向量化层 / 向量存储层。向量模型服务不要放进 `offline/` 或 `online/`。向量库不要写回每来源一份 `step5` JSON。
-2. 层与模块开关只改 `conf/base.py`，不要写回各层顶部常量。不把 ROOT、host、port、第三方地址、密钥写进 `conf/config.yaml`。权重目录是 `embed/models/`（下载脚本同目录），不写进 yaml。
+1. 新代码进目标架构规定的位置。不要重建 `query/`。离线不要再拆独立的分块层 / 向量化层 / 向量存储层。向量模型服务进 `service/embed/`，不要摊在 `service/` 根上，也不要放进 `backend/offline/` 或 `backend/online/`。向量库不要写回每来源一份 `step5` JSON。
+2. 层与模块开关只改 `backend/conf/base.py`，不要写回各层顶部常量。不把 ROOT、host、port、第三方地址、密钥写进 `backend/conf/config.yaml`。向量权重目录是 `service/embed/models/`（下载脚本同目录），不写进 yaml。
 3. `vlm_ocr.py` / `anyurl.py` 是预留实现文件：本阶段不调用、不要删、不要接进流程。抽取目录只放流程会调用的模块。向量层不要 import 抽取方式。不要拆共享 Chat 客户端。
 4. 不把产品仓的模块名、类名、`parser_id` 写进本仓代码或术语表。不 fork 产品仓。不把 anyurl2text、MinerU、anydoc 源码引进本仓。不要再接外仓 `/rag/extract/file`。
 5. 提问口不接 `create_agent` / `create_deep_agent`、KV 查询侧短路、词重叠重排。不要做图片 OCR、ask 热加载。

@@ -22,7 +22,7 @@
 - 按格式堆源适配器。
 - 为完整而双写 KV；把 KV 再向量化当默认。
 - 音视频入库。
-- 在 `extract/` 或 `vector/` 写入库总编排；把向量模型服务实现放进 `offline/` 或 `online/`。
+- 在 `extract/` 或 `vector/` 写入库总编排；把向量模型服务实现放进 `backend/offline/` 或 `backend/online/`。
 - 为向量匹配再开关系库或文档库。
 
 状态：**已实现** = 代码位置与目标相符；**内联** = 逻辑有但未拆开；**未做** = 目标有、代码没有；**暂时不做** = 目标留预留位置，本阶段不排期；**明确不做** = 只标边界。
@@ -32,7 +32,7 @@
 人对库入口是 `scripts/ingest/ingest.py`：按份先抽取再向量。两层不互相 import，接点是磁盘上的 `chunkable_source.json`。
 
 ```
-offline/extract/            抽取层：一份源 → 可分块原文。内部 probe → route → 方式 → enrich → collect。  已实现
+backend/offline/extract/            抽取层：一份源 → 可分块原文。内部 probe → route → 方式 → enrich → collect。  已实现
 ├── probe.py                源路径 → 基础信息。  已实现
 ├── route.py                仅 PDF 放行；有印刷目录则方式名 handbook，否则 pdf。  已实现
 ├── methods/pdf.py          pymupdf4llm 抽页；印刷目录动态扫描。  已实现
@@ -42,12 +42,12 @@ offline/extract/            抽取层：一份源 → 可分块原文。内部 p
 ├── collect.py              写出 chunkable_source.json。  已实现
 └── entrance.py             串上面五步。  已实现
 
-offline/vector/             向量层：可分块原文 → LanceDB chunks 表。HTTP 调 8030。  已实现
+backend/offline/vector/             向量层：可分块原文 → LanceDB chunks 表。HTTP 调 8030。  已实现
 ├── chunk.py                有目录则按标题拼块；页码块级。  已实现
 ├── store.py                按来源写入；Hash / HTTP 客户端同文件。  已实现
 └── entrance.py             读可分块原文，切批 embedding，写库成功后才写 step4。  已实现
 
-offline/store/kv_store.py   KV 支线存储。查询侧不接。  暂时不做
+backend/offline/store/kv_store.py   KV 支线存储。查询侧不接。  暂时不做
 ```
 
 ## 3. 在线 · 问答
@@ -55,7 +55,7 @@ offline/store/kv_store.py   KV 支线存储。查询侧不接。  暂时不做
 主入口 `POST /api/ask`。检索门面 `frontend/` 只调该接口；没有该页，接口与命令行仍能问。过滤是层，图上不是节点。
 
 ```
-online/
+backend/online/
 ├── server.py               问答 HTTP：创建应用、注册路由、lifespan load 一次库。  已实现
 ├── router.py / schema.py   轻量 HTTP。  已实现
 ├── graph.py                LangGraph：intent →（闲聊则跳过）recall → rerank → generate。  已实现
@@ -72,23 +72,31 @@ scripts/ask/chat_kb.py      多轮同一 session。  已实现
 scripts/eval/eval_kb.py     最小评测口，走 ask_once_core，停在生成前。  已实现
 ```
 
-## 4. 共享 · 向量模型服务
+## 4. 独立进程服务
 
-入库和提问都 HTTP 调 8030。实现不属于 `offline/` 也不属于 `online/`。
+`service/` 按服务分子目录。实现不属于 `backend/offline/` 也不属于 `backend/online/`。
 
 ```
-embed/server.py             向量 HTTP 入口与实现。  已实现
-embed/download_embed.py     权重下载到同目录 models/。  已实现
-embed/models/               本地 embedding 权重（不进仓）。  已实现
+service/embed/                  向量模型服务：入库和提问 HTTP 调 8030。  已实现
+├── server.py                   向量 HTTP 入口与实现。  已实现
+├── download_embed.py           权重下载到同目录 models/。  已实现
+└── models/                     本地 embedding 权重（不进仓）。  已实现
+
+service/kev08/                  决策模型预备服务：独立 uv 环境与权重，不接提问口。  暂时不做
 ```
 
 ## 5. 仓库根
 
 ```
+backend/                   离线抽取与在线问答。内部仍按 offline / online 分层。  已实现
+backend/conf/               ROOT（backend 目录）、层开关与阈值。  已实现
+backend/data/               源 PDF、抽取产物、LanceDB。  已实现
+frontend/                   检索门面。  已实现
+service/embed/              向量模型服务。  已实现
+service/kev08/              决策模型预备服务。  暂时不做
+docs/                       目标架构与 ADR。  已实现
 start.py                    一键起 8030 / 8031 / 8032。  已实现
 pyproject.toml              包清单；uv 管理环境。  已实现
-conf/base.py                ROOT、层开关与阈值；在线布尔只剩 USE_REWRITE。  已实现
-conf/config.yaml            相对 data / lancedb 目录名。  已实现
 scripts/ingest/ingest.py    人对库入库；VECTOR_ONLY 只重跑向量层。  已实现
 scripts/ingest/verify_ingest.py  只读验收；硬断言未过则非零退出。  已实现
 tests/                      纯函数与替身，不调 LLM、不调 8030。  已实现
@@ -100,4 +108,5 @@ tests/                      纯函数与替身，不调 LLM、不调 8030。  �
 - 入库后 ask 进程 reload：启动仍 load 一次。
 - 交叉编码器重排：重排节点只截断，不换序。
 - Agent 学习沙箱：永不接提问口。
+- kev08 接进意图识别与拒答：目录在 `service/kev08/`，本阶段不调用、不进 `start.py`。
 - 拆共享 Chat 客户端：`chat_text` 仍住在生成包。
