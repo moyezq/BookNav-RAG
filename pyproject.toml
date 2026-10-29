@@ -35,7 +35,7 @@ dependencies = [
     "lancedb==0.37.1",
     "pylance==12.0.0",
 
-    # HTTP 客户端：调本仓向量服务 8030（KV 实验脚本另用它打外仓 /extract）
+    # HTTP 客户端：调本仓向量服务 8030
     "requests==2.34.2",
 
     # 向量模型服务 service/embed/ 与 download_embed.py 用；缺这三个 python -m service.embed.server 起不来
@@ -48,7 +48,7 @@ dependencies = [
 [tool.setuptools.packages.find]
 # flat-layout 自动发现在本仓会因多个顶层包/目录直接报错，所以显式限定。
 # frontend/、backend/data/ 不是 Python 包；scripts/ 与 tests/ 是调试与用例，不是被 import 的库。
-# 用 find 而不是手写包名：本仓按层加目录（backend/offline/extract/methods 这种），新增包不用回来改这里。
+# 用 find 而不是手写包名：本仓按层加目录（backend/offline/extract 这种），新增包不用回来改这里。
 # backend/（含 conf、offline、online）与 service.embed；kev08 自带 pyproject，不进本仓包。
 include = ["backend*", "service", "service.embed*"]
 exclude = ["service.kev08*"]

@@ -103,7 +103,7 @@ def test_解析失败时打出原因与模型原始输出(capsys, monkeypatch):
     """抽空不是静默降级：要能看出是哪一步空的、模型到底给了什么。"""
     monkeypatch.setattr(enrich, "chat_text", lambda prompt: "这份手册我抽不出标签")
 
-    tags = enrich.infer_ingest_tags("正文片段", "某手册")
+    tags = enrich.TagEnrich().infer("正文片段", "某手册")
     printed = capsys.readouterr().out
 
     assert tags == []
@@ -119,7 +119,7 @@ def test_模型调用失败也打出来(capsys, monkeypatch):
 
     monkeypatch.setattr(enrich, "chat_text", _boom)
 
-    tags = enrich.infer_ingest_tags("正文片段", "某手册")
+    tags = enrich.TagEnrich().infer("正文片段", "某手册")
     printed = capsys.readouterr().out
 
     assert tags == []

@@ -6,9 +6,7 @@
 对外：ROOT（backend 目录）、REPO_ROOT、层与模块常量、SOURCE_DIR、RESULT_DIR、LANCEDB_DIR、QA_DIR、
       EMBED_API_URL、EMBED_API_KEY、CHAT_API_URL、CHAT_MODEL_NAME。
 权重目录不在这里：在 service.embed.MODEL_DIR（service/embed/models/）。
-另导出 ANYURL2TEXT_URL：抽取层已与 anyurl2text 解耦（ADR-0034），只剩 KV 实验脚本
-      `scripts/url_to_knowledge.py` 打它的 `/extract` 时用。密钥边界只有两处——
-      进程环境变量与本仓 `.env`，不读别的仓。
+密钥边界只有两处——进程环境变量与本仓 `.env`，不读别的仓。
 """
 
 from __future__ import annotations
@@ -114,7 +112,6 @@ apply_env()
 
 EMBED_API_URL = os.getenv("EMBED_API_URL", "http://127.0.0.1:8030/v1/embeddings")
 EMBED_API_KEY = os.getenv("EMBED_API_KEY", "")
-ANYURL2TEXT_URL = os.getenv("ANYURL2TEXT_URL", "http://127.0.0.1:8020").rstrip("/")
 CHAT_API_URL = os.getenv("CHAT_API_URL", "https://api.deepseek.com/v1/chat/completions")
 CHAT_MODEL_NAME = os.getenv("CHAT_MODEL_NAME", "deepseek-flash")
 

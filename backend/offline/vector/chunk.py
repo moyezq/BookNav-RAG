@@ -25,7 +25,7 @@ def split_doc_text_into_chunks(doc_text: str, max_doc_tokens: int = 1800) -> lis
     按空行分段累积分块，超过 max_doc_tokens 就切开。
 
     功能：给没有目录结构的纯文本用。
-    应用场景：手册抽不出印刷目录时的退路；KV 实验脚本按 kind 分块也调它（还没接进流程）。
+    应用场景：手册抽不出印刷目录时的退路。
     输入：doc_text — 原文；max_doc_tokens — 单块上限（粗估 token）。
     输出：块文本列表；原文为空时 []。
     """

@@ -8,7 +8,7 @@
       与「真丢正文」必须分开算，否则正确丢掉的章扉页和目录截断丢的正文长得一模一样。
 
 原理（按系统流程）
-  离线流程是：源 → 抽取层（分页 + 目录区间 + tags）→ 可分块原文 → 向量层（分块 → 向量 → LanceDB）。
+  离线流程是：源 → extract_pdf.py（原始页）→ ingest.py（目录区间 + tags → 可分块原文）→ 向量层（分块 → 向量 → LanceDB）。
   坏点位置决定哪个文件能发现它，本脚本只查前两个文件能发现的部分：
 
   1. 抽取层产出 chunkable_source.json：pages 是源的真实页。查「源一共几页」。
@@ -461,7 +461,7 @@ def check_store_sync(source: str, chunks: list[dict], records: list[dict]) -> di
     if only_in_step4:
         hard_problems.append(
             f"库里缺 {len(only_in_step4)} 块（step4 有、backend/data/lancedb 没有）：{only_in_step4[:5]}；"
-            f"入库没写完，把 scripts/ingest/ingest.py 顶部 VECTOR_ONLY 改成 True 再跑"
+            f"入库没写完，再跑 python scripts/ingest/ingest.py（不必重抽页）"
         )
     if only_in_store:
         hard_problems.append(

@@ -102,9 +102,10 @@ def step4_check_knowledge_base() -> bool:
         print(f"尚未入库：{exc}")
         print("下一步（样例 PDF 已在 backend/data/source/demo_handbook.pdf）：")
         print("  1. 确认根目录 .env 已填 DEEPSEEK_API_KEY（入库抽标签与问答都要用）")
-        print("  2. 另开终端起向量服务：uv run python -m service.embed.server")
-        print("  3. uv run python scripts/ingest/ingest.py")
-        print("  4. 停掉临时向量服务后，再跑 uv run python start.py")
+        print("  2. uv run python scripts/ingest/extract_pdf.py")
+        print("  3. 另开终端起向量服务：uv run python -m service.embed.server")
+        print("  4. uv run python scripts/ingest/ingest.py")
+        print("  5. 停掉临时向量服务后，再跑 uv run python start.py")
         return False
     print(f"知识库：{len(records)} 块，embedder={embedder_name}，dim={dim}")
     return True

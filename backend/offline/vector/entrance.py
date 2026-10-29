@@ -5,7 +5,7 @@
 职责：读 backend/data/result/<source>/chunkable_source.json，写 step4_chunks.json，按来源写入 backend/data/lancedb 的 chunks 表。
       不问答。不实现模型、不下权重。不写 step5 JSON。
 前置：抽取层已写出可分块原文；EMBEDDER_KIND=http 时 python -m service.embed.server 已起。
-      由 scripts/ingest/ingest.py 调用；本文件无 __main__。
+      由 scripts/ingest/ingest.py 调用；本文件无 __main__。须已有 raw_pages.json。
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def list_chunkable_paths() -> list[Path]:
     """
     列出各来源已写出的可分块原文。
 
-    功能：扫 backend/data/result/<source>/chunkable_source.json，跳过 kv / qa。
+    功能：扫 backend/data/result/<source>/chunkable_source.json，跳过 qa。
     应用场景：向量层入口。
     输入：无，读 RESULT_DIR。
     输出：按路径排序的 JSON 路径列表。
@@ -51,7 +51,10 @@ def list_chunkable_paths() -> list[Path]:
         if source_path.is_file():
             paths.append(source_path)
     if not paths:
-        raise FileNotFoundError(f"未找到可分块原文，先跑 python scripts/ingest/ingest.py")
+        raise FileNotFoundError(
+            f"未找到可分块原文，先跑 python scripts/ingest/extract_pdf.py "
+            f"再 python scripts/ingest/ingest.py"
+        )
     return paths
 
 

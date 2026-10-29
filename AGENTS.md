@@ -13,9 +13,9 @@
 - 本机验证外部模型：先给方案（官方文档、权重仓库与文件、下载命令、最小验证请求），等人说可以再下。权重不自己下。torch 这类 GB 级依赖装之前必须问；已有 GPU 环境先确认能否复用，不要默认装 CPU 版。GitHub 直连超时或 5 分钟没有字节落地就停，改 tarball / 镜像或请用户给。一步卡住超过 10 分钟停手汇报。
 - 不要重建 `query/`。离线不要再拆独立的分块层 / 向量化层 / 向量存储层。向量模型服务进 `service/embed/`，不要摊在 `service/` 根上，也不要放进 `backend/offline/` 或 `backend/online/`。向量库不要写回每来源一份 `step5` JSON。
 - 层与模块开关只改 `backend/conf/base.py`。不把 ROOT、host、port、第三方地址、密钥写进 `backend/conf/config.yaml`。向量权重目录是 `service/embed/models/`，不写进 yaml。
-- `vlm_ocr.py` / `anyurl.py` 本阶段不调用、不要删、不要接进流程。向量层不要 import 抽取方式。不要拆共享 Chat 客户端。
+- 不要重建 `extract/methods/`。向量层不要 import 抽取层。不要拆共享 Chat 客户端。
 - 不把产品仓的模块名、类名、`parser_id` 写进本仓代码或术语表。不 fork 产品仓。不把 anyurl2text、MinerU、anydoc 源码引进本仓。不要再接外仓 `/rag/extract/file`。
-- 提问口不接 `create_agent` / `create_deep_agent`、KV 查询侧短路、词重叠重排。不要做图片 OCR、ask 热加载。
+- 提问口不接 `create_agent` / `create_deep_agent`、词重叠重排。不要做 KV 存储或 KV 召回、图片 OCR、ask 热加载。
 
 ## 检查落点
 

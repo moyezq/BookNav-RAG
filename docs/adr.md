@@ -2,29 +2,25 @@
 
 仍有效的为什么。
 
-## ADR-0002 · 2026-09-28 · 知识块是默认检索单元，KV 是支线
+## ADR-0002 · 2026-10-29 · 知识块是唯一检索单元
 
-仓里曾有手册进知识块、URL 抽 KV 两条互不相通的离线流程。选定知识块走向量检索，作为常驻主路径。KV 条目走精确匹配 / FAQ：存储可由实验脚本写入；提问口不读、不把 KV 当第二套必建库，也不把 KV 再编进向量库。
+仓里曾有手册进知识块、URL 抽 KV 两条互不相通的离线流程。选定知识块走向量 + BM25。短事实也在同一批正文里检索，不另建精确匹配库。KV 支线已删，见 ADR-0040。
 
-## ADR-0003 · 2026-09-28 · 在线主路径固定，对象形状稳定
+## ADR-0003 · 2026-10-29 · 在线主路径固定，对象形状稳定
 
-在线问答按层依次调用，不写成一条巨函数。主路径：意图识别 → 召回 → 重排截断 → 生成。启用与删除插件用同一套数据对象。现在只有改写这一个开关能关（`USE_REWRITE`）。拒答一直开着。不要把 KV 查询短路或词重叠重排接回提问口。
+在线问答按层依次调用，不写成一条巨函数。主路径：意图识别 → 召回 → 重排截断 → 生成。启用与删除插件用同一套数据对象。现在只有改写这一个开关能关（`USE_REWRITE`）。拒答一直开着。不要把词重叠重排接回提问口。
 
 ## ADR-0004 · 2026-09-28 · 知识块检索默认向量加 BM25
 
 检索公式默认混合：LanceDB 余弦近邻加进程内 BM25，再 RRF。不上独立搜索引擎。Hash 嵌入只是把流程打通，不是语义检索，不写入检索公式。
 
-## ADR-0005 · 2026-09-28 · KV 存储是可拆的支线，不是对等必建库
+## ADR-0006 · 2026-10-29 · 抽取接点是可分块原文
 
-短事实不必一上来双写两套库。知识块向量库常驻；KV 存储只当支线。与 ADR-0002 同向：实验脚本可写，查询侧不装。
+抽取与分块之间的对象是可分块原文：正文、可选页列表、可选目录区间、来源元数据。由 collect 写出 `chunkable_source.json`。页码留下来，引用才能写第几页。pymupdf4llm 的落盘是原始页，不替代这个接点，见 ADR-0039。
 
-## ADR-0006 · 2026-09-28 · 抽取接点是可分块原文
+## ADR-0007 · 2026-10-29 · 模块 I/O 约定在数据对象层
 
-抽取与分块之间的对象是可分块原文：正文、可选页列表、可选目录区间、来源元数据。由 collect 写出 `chunkable_source.json`。方式只输出文件内容。页码留下来，引用才能写第几页。
-
-## ADR-0007 · 2026-09-28 · 模块 I/O 约定在数据对象层
-
-插件装上或删掉时，字段仍一致。约定的对象为：可分块原文、知识块、KV 条目、查询、检索命中、生成结果。不在目标架构里写 HTTP 或类定义。
+插件装上或删掉时，字段仍一致。约定的对象为：可分块原文、知识块、查询、检索命中、生成结果。不在目标架构里写 HTTP 或类定义。
 
 ## ADR-0008 · 2026-10-17 · 一份知识库，来源是文档身份
 
@@ -54,29 +50,29 @@
 
 HTTP 路由在 `backend/online/router.py`；进程入口 `python -m backend.online.server`。命令行调试 `scripts/ask/query_kb.py`，评测 `scripts/eval/eval_kb.py`。不重建 `query/`。
 
-## ADR-0016 · 2026-09-28 · 抽取方式可插拔，collect 写出可分块原文
+## ADR-0016 · 2026-10-29 · 抽取层四个 class，collect 写出可分块原文
 
-抽取层按步骤：基础信息 → 路由 → 方式抽正文 → 内容生成信息 → collect。增删方式靠路由登记，不为 Office 各堆一个适配器。anyurl2text 源码不引进；本阶段路由只登记 PDF 本仓抽页，见 ADR-0034。`handbook` / `pdf` 是响应形状对应的方式名；`anyurl` 是预留位置、还没接进流程。`vlm_ocr.py` 本阶段不调用。测试与调试在 `scripts/`。
+抽取层按数据处理场景拆 class：`PdfPageExtract` 抽页、`CatalogueBuild` 建印刷目录区间、`TagEnrich` 抽过滤标签、`ChunkableCollect` 写出可分块原文。不为 Office 预留空文件或空登记表；以后加格式就加对应 class 和脚本步骤。anyurl2text 源码不引进。`handbook` / `pdf` 是可分块原文上的方式名（有没有目录区间），不是路由插件名。测试与调试在 `scripts/`。
 
-## ADR-0017 · 2026-09-28 · 分块、向量化、向量存储合并成向量层
+## ADR-0017 · 2026-10-29 · 分块、向量化、向量存储合并成向量层
 
-离线后半段是一层：可分块原文进，向量库出。目录 `backend/offline/vector/`。与抽取层用磁盘上的 `chunkable_source.json` 相接。KV 存储不进向量层。权威库是 LanceDB，见 ADR-0024。
+离线后半段是一层：可分块原文进，向量库出。目录 `backend/offline/vector/`。与抽取层用磁盘上的 `chunkable_source.json` 相接。权威库是 LanceDB，见 ADR-0024。
 
 ## ADR-0018 · 2026-10-28 · 向量模型服务独立于离线目录
 
 入库和提问都要把文本变成向量。实现与进程入口都在 `service/embed/server.py`，不属于 `backend/offline/` 也不属于 `backend/online/`。从仓库根 `python -m service.embed.server`。下载是 `service/embed/download_embed.py`，权重落在同目录 `service/embed/models/`（不再套一层模型名目录）。离线与在线都 HTTP 调 8030。
 
-## ADR-0019 · 2026-10-28 · 入库脚本在 scripts/ingest/ingest.py
+## ADR-0019 · 2026-10-29 · 人对库两个脚本：extract_pdf.py 与 ingest.py
 
-人对库跑入库，入口是 `python scripts/ingest/ingest.py`。抽取层与向量层只提供函数；脚本按份先抽取再向量。编排放 `scripts/`（按场景分子目录），不放进 `extract/` 或 `vector/`。要跑哪一份源，改该脚本顶部常量，不是系统配置。
+人对库先跑 `python scripts/ingest/extract_pdf.py`（pymupdf4llm → 原始页），再跑 `python scripts/ingest/ingest.py`（原始页 → 可分块原文 → 向量库）。抽取层提供 class，向量层提供函数；脚本按步骤函数编排，不把总编排写进 `extract/` 或 `vector/`。要跑哪一份源，改该脚本顶部常量，不是系统配置。验收仍是 `verify_ingest.py`，演示 PDF 仍是 `make_demo_pdf.py`。
 
 ## ADR-0020 · 2026-10-28 · 问答入口是 backend/online/server.py，路由进 backend/online/router.py
 
 `backend/online/server.py` 只创建应用、注册路由、lifespan。`POST /api/ask` 与 schema 在 `backend/online/router.py`、`backend/online/schema.py`。该进程唯一 `__main__` 在 `server.py`；不要 `python backend/online/router.py`。
 
-## ADR-0021 · 2026-10-10 · 密钥与第三方地址进 .env
+## ADR-0021 · 2026-10-29 · 密钥与第三方地址进 .env
 
-密钥模板 `.env_example`，本仓 `.env` 不进 git。第三方 URL 与密钥只走仓库根 `.env`。不写进 `backend/conf/config.yaml`。只读本仓 `.env`：`backend.conf.apply_env()` 是唯一读取点，顺序是「进程环境变量 → 本仓 `.env`」，只填空缺。抽取解耦（ADR-0034）后已删除按 `ANYURL2TEXT_ENV` 读外仓 `.env` 的兜底；`ANYURL2TEXT_URL` 保留，只剩 KV 实验脚本打 `/extract` 用。
+密钥模板 `.env_example`，本仓 `.env` 不进 git。第三方 URL 与密钥只走仓库根 `.env`。不写进 `backend/conf/config.yaml`。只读本仓 `.env`：`backend.conf.apply_env()` 是唯一读取点，顺序是「进程环境变量 → 本仓 `.env`」，只填空缺。抽取解耦（ADR-0034）后已删除按 `ANYURL2TEXT_ENV` 读外仓 `.env` 的兜底；外仓地址也不再进本仓 `.env`。
 
 ## ADR-0022 · 2026-10-28 · ROOT 在 base.py，host/port 在启动文件
 
@@ -110,23 +106,23 @@ Windows 本地向量写进 `backend/data/lancedb/`，一张 `chunks` 表同时�
 
 ## ADR-0029 · 2026-10-28 · 层与模块常量集中在 backend/conf/base.py
 
-ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `service/embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest/ingest.py`。
+ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`，按层注释分隔。相对 data 目录仍走 yaml；权重目录是 `service/embed/models/`，不进 yaml；第三方与密钥仍走 `.env`；host/port 仍写在启动文件。不要写回各层顶部常量。入库样本开关留在 `scripts/ingest/` 各脚本顶部。
 
-## ADR-0030 · 2026-09-28 · 删掉不起作用的开关，不修通假路径
+## ADR-0030 · 2026-10-29 · 删掉不起作用的开关，不修通假路径
 
-布尔若拨了不改路径，或开了仍静默走原路，就删掉开关和对应死代码。提问口不接 KV 短路、不接词重叠重排。拒答无总闸，空命中或低余弦用拒答文案。在线布尔只留真能改路的 `USE_REWRITE`。抽取层无开关。
+布尔若拨了不改路径，或开了仍静默走原路，就删掉开关和对应死代码。提问口不接词重叠重排。拒答无总闸，空命中或低余弦用拒答文案。在线布尔只留真能改路的 `USE_REWRITE`。抽取层无开关。
 
-## ADR-0031 · 2026-09-28 · 抽取不按文件名切换
+## ADR-0031 · 2026-10-29 · 抽取不按文件名切换
 
-不按样本名单在两种抽取之间切换。印刷目录 PDF 吐页与区间，方式名记 `handbook`；本仓 PDF 无目录记 `pdf`。`anyurl` 是已退役的方式名，路由不登记。汽车手册是有目录 PDF 的样本，不是抽取层的开关。
+不按样本名单在两种抽取之间切换。印刷目录 PDF 方式名记 `handbook`；无目录记 `pdf`。`anyurl` 是已退役的方式名。汽车手册是有目录 PDF 的样本，不是抽取层的开关。
 
 ## ADR-0033 · 2026-10-17 · 现行为什么写在 adr.md，废决策写在 history.md
 
 分文件 ADR 加现状补丁会让旧选定继续束缚开发，历史也不完整。选定：仍有效的为什么写在一份带编号与日期的 `docs/adr.md`；被取代或废弃的改动按时间记入 `docs/history.md`。写代码听目标架构和 `AGENTS.md`，不要把 history 里的旧选定当成不许做的事。
 
-## ADR-0034 · 2026-10-10 · PDF 本仓抽页；手册抽取与 anyurl2text 解耦
+## ADR-0034 · 2026-10-29 · PDF 本仓抽页；手册抽取与 anyurl2text 解耦
 
-入库脚本要对 PDF 独立抽页并写入向量库，不能依赖外仓是否已经启动；外仓 `/rag/extract/file` 已下线。选定：`ext==pdf` 走 `methods/pdf.py`（pymupdf4llm + 印刷目录）；非 PDF 本阶段拒绝；`methods/anyurl.py` 是还没接进流程的预留文件。外仓源码不引进。可分块原文的约定不变。见 ADR-0016、ADR-0031。
+入库要对 PDF 独立抽页并写入向量库，不能依赖外仓是否已经启动；外仓 `/rag/extract/file` 已下线。选定：PDF 走 `PdfPageExtract`（pymupdf4llm）写成原始页；目录与标签在 ingest 里用 `CatalogueBuild` / `TagEnrich`。非 PDF 本阶段由 `list_source_files` 跳过。外仓源码不引进。可分块原文的约定不变。见 ADR-0016、ADR-0031、ADR-0039。
 
 ## ADR-0035 · 2026-10-10 · 过滤标签是加权信号，不是强制筛选
 
@@ -143,3 +139,11 @@ ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`�
 ## ADR-0038 · 2026-10-28 · 仓库按 backend / frontend / docs / service 分地盘
 
 前后端同仓后，仓库根不再直接摊架构层。选定：离线抽取与在线问答进 `backend/`（内部仍按 offline / online 分层，ADR-0011；`conf/` 与 `data/` 也只给后端用）；检索门面仍是 `frontend/`；文档仍是 `docs/`；独立进程服务进 `service/`，按服务分子目录——`embed/` 是主路径向量服务（ADR-0018，不读 `backend/conf`），`kev08/` 是预备的决策模型服务（自带 pyproject，torch 版本与本仓向量服务无交集，不接提问口、不进 `start.py`）。`scripts/`、`tests/`、`start.py`、`.env` 留仓库根。不把 embed 塞进 backend。
+
+## ADR-0039 · 2026-10-29 · pymupdf4llm 产出落盘为原始页
+
+`pymupdf4llm.to_markdown` 是离线链路里最慢的一步，和目录解析、抽标签、写库绑在一次运行里会让改分块或重抽标签也重跑抽页。选定：`extract_pdf.py` 把去掉 Rect、页码从 1 起的页列表写成 `backend/data/result/<stem>/raw_pages.json`（`source`、`name`、`pages[{page,text}]`）。`ingest.py` 只读这份文件，找不到就失败，不回头调 pymupdf4llm。可分块原文仍是与向量层的接点（ADR-0006）。
+
+## ADR-0040 · 2026-10-29 · 去掉 KV 支线
+
+预留的 KV 存储、实验脚本，以及「规格页单行冒号句拆成精确匹配」的方案，适用面只覆盖手册里极少几行，留在仓里会让人把节标题、过滤标签、页正文当成三套检索对象。选定：删除 `backend/offline/store/`，提问口与入库都不走精确匹配；规格句留在知识块正文里检索。取代 ADR-0005。

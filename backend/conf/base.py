@@ -38,8 +38,8 @@ SOURCE_ALLOWED_SUFFIXES = frozenset({".pdf"})
 # 分块：单块粗估 token 上限
 MAX_DOC_TOKENS = 1800
 
-# 入口：列出可分块原文时跳过这些产出目录
-SKIP_DIR_NAMES = frozenset({"kv", "qa"})
+# 入口：列出可分块原文时跳过调试问答落盘目录
+SKIP_DIR_NAMES = frozenset({"qa"})
 
 # 嵌入客户端：http 调向量模型服务；hash 只把流程跑通，不是语义检索
 EMBEDDER_KIND = "http"

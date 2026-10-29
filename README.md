@@ -61,17 +61,21 @@ cd ..
 演示手册已在 `backend/data/source/demo_handbook.pdf`（自造 6 页）。把其它 PDF 也放进该目录。第三方版权文档只放本机、不要提交。
 
 ```powershell
-# 入库要向量服务：先开一个终端
+# 1. 抽页（最慢，不需要向量服务）
+uv run python scripts/ingest/extract_pdf.py
+
+# 2. 入库要向量服务：另开一个终端
 uv run python -m service.embed.server
 ```
 
-另开终端（同一 uv 环境）：
+再开终端（同一 uv 环境）：
 
 ```powershell
+# 3. 从 raw_pages.json 建目录、抽标签、写向量库
 uv run python scripts/ingest/ingest.py
 ```
 
-样例是**自造 6 页**短手册（目录 + 5 节正文）。CPU 上 bge-m3 大约几十秒到两分钟；看到 `[向量层] 批 n/N` 即在推进。结束后可关临时向量服务。
+样例是**自造 6 页**短手册（目录 + 5 节正文）。抽页时间随 PDF 页数变；向量这一步 CPU 上 bge-m3 大约几十秒到两分钟，看到 `[向量层] 批 n/N` 即在推进。结束后可关临时向量服务。改分块或标签只需重跑 `ingest.py`，不必再抽页。
 
 验收（可选）：
 
@@ -113,11 +117,11 @@ uv run python start.py
 ## 怎么工作
 
 ```text
-PDF → 抽取（页 + 印刷目录）→ 分块（块级页码）→ 8030 编向量 → LanceDB
+PDF → pymupdf4llm（raw_pages.json）→ 目录/标签（可分块原文）→ 分块 → 8030 编向量 → LanceDB
 问句 → 意图（闲聊/检索/跟进）→ 改写 → 向量+BM25 召回 → 截 TOP_K → 拒答或生成 → 引用
 ```
 
-- **离线**：`scripts/ingest/ingest.py` 把抽取层与向量层连起来依次调用；写库成功后才写出 `step4_chunks.json`。目录页用动态扫描，不写死「只读前 N 页」。
+- **离线**：先 `extract_pdf.py` 抽页，再 `ingest.py` 从原始页做到写库；写库成功后才写出 `step4_chunks.json`。目录页用动态扫描，不写死「只读前 N 页」。
 - **在线**：`python -m backend.online.server` 启动时读库建 BM25；问答页只调 `POST /api/ask`。
 - **页码**：子块只声明自己覆盖的页；`verify_ingest.py` 检查「声明页次 / 页并集 = 1」。
 - **过滤**：文档身份 `source` 精确相等就强制筛选（不参与打分）；动态标签 `{field,value}` 按命中条数加权，不强制筛选候选。
@@ -155,7 +159,7 @@ book-nav-rag/
 ├── service/
 │   ├── embed/               # 向量服务；入口 python -m service.embed.server；权重 embed/models（不进仓）
 │   └── kev08/               # 决策模型预备服务；独立 uv 环境，不接提问口
-├── scripts/                 # 入库 ingest/、问答 ask/、评测 eval/
+├── scripts/                 # 入库 ingest/（抽页 + 入库 + 验收）、问答 ask/、评测 eval/
 └── docs/                    # 内部说明，日常使用不必读
 ```
 

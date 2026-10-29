@@ -28,7 +28,7 @@ OUT_PATH: Final[Path] = SOURCE_DIR / "demo_handbook.pdf"
 RUN_LIMIT_SEC: Final[int] = 300
 # ==============================
 
-# 目录印刷页码 = PDF 阅读器页码（与 pdf.py 约定一致）
+# 目录印刷页码 = PDF 阅读器页码（与 PdfPageExtract 约定一致）
 TOC_ENTRIES: Final[tuple[tuple[str, int], ...]] = (
     ("安全须知", 2),
     ("折叠支架", 3),
@@ -144,4 +144,4 @@ if __name__ == "__main__":
     # 1. TOC_ENTRIES + BODY_PAGES → backend/data/source/demo_handbook.pdf
     build_pdf(OUT_PATH)
     print(f"[1] 已写入 {OUT_PATH.relative_to(conf.ROOT)}（{len(BODY_PAGES) + 1} 页）", flush=True)
-    print("下一步：python scripts/ingest/ingest.py", flush=True)
+    print("下一步：python scripts/ingest/extract_pdf.py ，再 python scripts/ingest/ingest.py", flush=True)

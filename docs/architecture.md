@@ -4,11 +4,11 @@
 
 ## 1. 系统是什么
 
-把约定格式的文档变成一份知识库，按印刷目录把每页归到对应章节、抽正文并自动抽出过滤标签，再按检索作答。输入是查询文本，输出是答案文本与页码引用。默认检索单元是知识块。不是 SaaS 管理平台，不从产品仓 fork。样本可以是汽车手册；手册不是库的领域定义。
+把约定格式的文档变成一份知识库，按印刷目录把每页归到对应章节、抽正文并自动抽出过滤标签，再按检索作答。输入是查询文本，输出是答案文本与页码引用。检索单元是知识块。不是 SaaS 管理平台，不从产品仓 fork。样本可以是汽车手册；手册不是库的领域定义。
 
-一份逻辑知识库，可含多个来源。来源是文档身份，也是唯一强制筛选维。过滤标签是入库从正文抽出的 `{field, value}`，字段名不预置；查询时按命中条数给候选加权，不强制筛选。KV 条目是可拆支线：存储可由实验脚本写入，查询侧不进召回。
+一份逻辑知识库，可含多个来源。来源是文档身份，也是唯一强制筛选维。过滤标签是入库从正文抽出的 `{field, value}`，字段名不预置；查询时按命中条数给候选加权，不强制筛选。检索单元只有知识块。
 
-源格式目标态仍含 PDF、Office、纯文本 / Markdown、URL / HTML；本阶段路由只登记 PDF。音视频明确不做。
+源格式目标态仍含 PDF、Office、纯文本 / Markdown、URL / HTML；本阶段只抽 PDF。音视频明确不做。
 
 在线主入口是一个轻量 HTTP 接口。命令行调试走同一条图。检索门面是独立前端 `frontend/`，只调该接口展示问答。编排用 LangGraph 把各层依次调用；生成节点用 LangChain `prompt | model | parser`。`create_agent` / `create_deep_agent` 不进主路径。
 
@@ -20,34 +20,29 @@
 - 评测台产品：只留最小评测口。
 - 自建解析微服务；把 anyurl2text / MinerU / anydoc 源码引进本仓。
 - 按格式堆源适配器。
-- 为完整而双写 KV；把 KV 再向量化当默认。
-- 音视频入库。
+- KV 条目、精确匹配库、从正文拆「字段：值」。
+- 音视频入库。图片 OCR。
 - 在 `extract/` 或 `vector/` 写入库总编排；把向量模型服务实现放进 `backend/offline/` 或 `backend/online/`。
+- 为抽取预留空的 `methods/` 或空登记表。
 - 为向量匹配再开关系库或文档库。
 
 状态：**已实现** = 代码位置与目标相符；**内联** = 逻辑有但未拆开；**未做** = 目标有、代码没有；**暂时不做** = 目标留预留位置，本阶段不排期；**明确不做** = 只标边界。
 
 ## 2. 离线 · 入库
 
-人对库入口是 `scripts/ingest/ingest.py`：按份先抽取再向量。两层不互相 import，接点是磁盘上的 `chunkable_source.json`。
+人对库入口是两个脚本：`extract_pdf.py` 把 PDF 抽成原始页，`ingest.py` 从原始页做成可分块原文再向量。两层不互相 import；与向量层的接点仍是磁盘上的 `chunkable_source.json`。
 
 ```
-backend/offline/extract/            抽取层：一份源 → 可分块原文。内部 probe → route → 方式 → enrich → collect。  已实现
-├── probe.py                源路径 → 基础信息。  已实现
-├── route.py                仅 PDF 放行；有印刷目录则方式名 handbook，否则 pdf。  已实现
-├── methods/pdf.py          pymupdf4llm 抽页；印刷目录动态扫描。  已实现
-├── methods/anyurl.py       预留实现文件，路由不登记。  暂时不做
-├── methods/vlm_ocr.py      预留实现文件，本阶段不调用。  暂时不做
-├── enrich.py               从正文抽动态 tags。  已实现
-├── collect.py              写出 chunkable_source.json。  已实现
-└── entrance.py             串上面五步。  已实现
+backend/offline/extract/            抽取层：一份源 → 可分块原文。四个 class，无总编排。  已实现
+├── pdf_page.py             PdfPageExtract：pymupdf4llm → [{page, text}]。  已实现
+├── catalogue.py            CatalogueBuild：印刷目录 → 区间。  已实现
+├── enrich.py               TagEnrich：从正文抽动态 tags。  已实现
+└── collect.py              ChunkableCollect：写出 chunkable_source.json。  已实现
 
 backend/offline/vector/             向量层：可分块原文 → LanceDB chunks 表。HTTP 调 8030。  已实现
 ├── chunk.py                有目录则按标题拼块；页码块级。  已实现
 ├── store.py                按来源写入；Hash / HTTP 客户端同文件。  已实现
 └── entrance.py             读可分块原文，切批 embedding，写库成功后才写 step4。  已实现
-
-backend/offline/store/kv_store.py   KV 支线存储。查询侧不接。  暂时不做
 ```
 
 ## 3. 在线 · 问答
@@ -97,14 +92,15 @@ service/kev08/              决策模型预备服务。  暂时不做
 docs/                       目标架构与 ADR。  已实现
 start.py                    一键起 8030 / 8031 / 8032。  已实现
 pyproject.toml              包清单；uv 管理环境。  已实现
-scripts/ingest/ingest.py    人对库入库；VECTOR_ONLY 只重跑向量层。  已实现
+scripts/ingest/extract_pdf.py  pymupdf4llm → raw_pages.json。  已实现
+scripts/ingest/ingest.py    原始页 → 可分块原文 → 向量库。  已实现
 scripts/ingest/verify_ingest.py  只读验收；硬断言未过则非零退出。  已实现
+scripts/ingest/make_demo_pdf.py  自造演示手册 PDF。  已实现
 tests/                      纯函数与替身，不调 LLM、不调 8030。  已实现
 ```
 
 **暂时不做**（目标留预留位置，不进当前排期）：
 
-- 图片 OCR：`vlm_ocr.py` 在，流程不调用。
 - 入库后 ask 进程 reload：启动仍 load 一次。
 - 交叉编码器重排：重排节点只截断，不换序。
 - Agent 学习沙箱：永不接提问口。
