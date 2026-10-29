@@ -20,6 +20,27 @@ scripts/ingest/ingest.py
                                                          # 写库成功之后才写 step4_chunks.json
 ```
 
+```mermaid
+flowchart TD
+  PDF["source/*.pdf"] --> EX["extract_pdf.py<br/>PdfPageExtract"]
+  EX --> RAW["raw_pages.json"]
+  RAW --> LD{"ingest.py<br/>有 raw_pages?"}
+  LD -->|没有| FAIL["失败 不回头抽 PDF"]
+  LD -->|有| CAT["CatalogueBuild"]
+  CAT -->|有印刷目录| H["handbook<br/>catalogue_ranges"]
+  CAT -->|无目录| P["pdf<br/>区间为空"]
+  H --> TAG["TagEnrich<br/>tags 最多 8，可空"]
+  P --> TAG
+  TAG --> COL["ChunkableCollect"]
+  COL --> CS["chunkable_source.json"]
+  CS --> CH["分块<br/>有区间按目录 否则按段/页"]
+  CH --> EMB["POST 8030"]
+  EMB --> DB["LanceDB chunks 表"]
+  DB --> S4["再写 step4_chunks.json"]
+```
+
+抽页不需要 8030。ingest 要向量服务已起。改分块或标签从 `raw_pages.json` 重跑 ingest，不回到 PDF。
+
 ### 1.1 抽取
 
 `PdfPageExtract`：pymupdf4llm 抽页，把 0 起页码转成阅读器页码（从 1 起），去掉 Rect。写出 `backend/data/result/<stem>/raw_pages.json`：`source`、`name`、`pages[{page,text}]`。
@@ -106,7 +127,7 @@ scripts/ingest/ingest.py
 
 客户端按 `EMBED_REQUEST_BATCH` 切批。写库前校验向量维数：`EMBED_DIM_BY_NAME` 登记 embedder → 期望维数；首次建表也过这一关。按来源替换写入 `backend/data/lancedb` 的 `chunks` 表（含 `tags` JSON、`catalogue_title`）。不上第二库。不为每个标签字段加一列。
 
-BM25 与向量并列，对同一批知识块建倒排；倒排在召回 load 时用同一批正文建，不上独立搜索引擎。Hash 向量只为打通流程，不是语义 embedding。换 embedding 维数或 embedder 名须删掉 `backend/data/lancedb` 后重新入库。`EMBEDDER_KIND=hash` 仍可跑通，但不是语义检索。
+BM25 与向量并列，对同一批知识块建倒排；倒排在召回 load 时用同一批正文建，不上独立搜索引擎。换 embedding 维数或 embedder 名须删掉 `backend/data/lancedb` 后重新入库。向量只走 8030；服务挂了提问口退化为纯 BM25，不另造假向量。
 
 ## 2. 在线问答
 

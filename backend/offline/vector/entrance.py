@@ -4,7 +4,7 @@
 
 职责：读 backend/data/result/<source>/chunkable_source.json，写 step4_chunks.json，按来源写入 backend/data/lancedb 的 chunks 表。
       不问答。不实现模型、不下权重。不写 step5 JSON。
-前置：抽取层已写出可分块原文；EMBEDDER_KIND=http 时 python -m service.embed.server 已起。
+前置：抽取层已写出可分块原文；python -m service.embed.server 已起。
       由 scripts/ingest/ingest.py 调用；本文件无 __main__。须已有 raw_pages.json。
 """
 
@@ -16,19 +16,17 @@ from pathlib import Path
 from backend.conf import (
     EMBED_API_KEY,
     EMBED_API_URL,
-    EMBED_DIM,
     EMBED_DIM_BY_NAME,
     EMBED_MODEL_NAME,
     EMBED_REQUEST_BATCH,
     EMBED_REQUEST_TIMEOUT_SEC,
-    EMBEDDER_KIND,
     LANCEDB_DIR,
     MAX_DOC_TOKENS,
     RESULT_DIR,
     SKIP_DIR_NAMES,
 )
 from backend.offline.vector.chunk import chunks_from_chunkable_source
-from backend.offline.vector.store import HashEmbedder, HttpEmbedder, LanceVectorStore
+from backend.offline.vector.store import HttpEmbedder, LanceVectorStore
 
 
 def list_chunkable_paths() -> list[Path]:
@@ -59,16 +57,14 @@ def list_chunkable_paths() -> list[Path]:
 
 
 def make_embedder():
-    """按 EMBEDDER_KIND 选 Hash 或 HTTP 客户端。"""
-    if EMBEDDER_KIND == "http":
-        return HttpEmbedder(
-            EMBED_API_URL,
-            EMBED_MODEL_NAME,
-            EMBED_API_KEY,
-            timeout_sec=EMBED_REQUEST_TIMEOUT_SEC,
-            request_batch=EMBED_REQUEST_BATCH,
-        )
-    return HashEmbedder(dim=EMBED_DIM)
+    """调 8030 的 HTTP 客户端。"""
+    return HttpEmbedder(
+        EMBED_API_URL,
+        EMBED_MODEL_NAME,
+        EMBED_API_KEY,
+        timeout_sec=EMBED_REQUEST_TIMEOUT_SEC,
+        request_batch=EMBED_REQUEST_BATCH,
+    )
 
 
 def run_vector(source_path: Path) -> Path:
@@ -91,9 +87,6 @@ def run_vector(source_path: Path) -> Path:
 
     embedder = make_embedder()
     print(f"[向量层] embedder={embedder.name} source={source_obj['source']}")
-    if EMBEDDER_KIND != "http":
-        # 临时占位向量不是语义检索：它建出的表写死在 EMBED_DIM 维，换回语义模型时对不上（TODO P1·11）
-        print(f"[向量层] 注意：EMBEDDER_KIND={EMBEDDER_KIND}，本次入库用的是临时占位向量，不是语义模型")
     texts = [chunk["text"] for chunk in chunks]
     vectors = embedder.embed_texts(texts)
     dim = embedder.dim or len(vectors[0])
@@ -101,7 +94,7 @@ def run_vector(source_path: Path) -> Path:
     if expected_dim is not None and expected_dim != dim:
         raise ValueError(
             f"embedder={embedder.name} 期望 {expected_dim} 维，实际 {dim} 维："
-            f"核对 backend/conf/base.py 的 EMBED_DIM / EMBED_MODEL_NAME（EMBED_DIM_BY_NAME），"
+            f"核对 backend/conf/base.py 的 EMBED_MODEL_NAME（EMBED_DIM_BY_NAME），"
             f"以及 embed 服务返回的维数"
         )
     store = LanceVectorStore(LANCEDB_DIR)

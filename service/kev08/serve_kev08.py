@@ -28,7 +28,7 @@ from model_kev08 import MAX_STATE, Model, answer, load_model
 
 # ========== 按需修改 ==========
 HOST = "127.0.0.1"
-PORT = 8034  # 本仓决策服务端口位，接 8030～8033 连号
+PORT = 8034  # 预备决策服务端口，不进 start.py
 DEVICE = "auto"  # auto | cpu | cuda
 # ==============================
 

@@ -3,7 +3,6 @@
 向量库 LanceDB 后端与进程内 BM25。
 
 使用前注意事项：
-- HashEmbedder 不是语义模型，只为不依赖外部 embedding 服务时把流程跑通。
 - HttpEmbedder 认 OpenAI 兼容的 data[].embedding；URL 与模型名由调用方常量传入。
 - HttpEmbedder 按 request_batch 切批（0 = 整批一个请求），一批以上时每批打一行 [向量层] 进度：
   整库入库在 CPU 上要十几分钟，没有进度输出会被当成卡死。
@@ -44,37 +43,6 @@ def _is_writing_source(source: str) -> bool:
     return source.endswith(WRITING_MARKER)
 
 
-class HashEmbedder:
-    """字符散列临时占位向量。"""
-
-    def __init__(self, dim: int = 256):
-        self.dim = dim
-        self.name = "hash"
-
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """
-        把一批文本编成固定维向量。
-
-        功能：按字符码累加到 dim 个桶，再 L2 归一。
-        应用场景：EMBEDDER_KIND=hash。
-        输入：texts — 知识块正文。
-        输出：与 texts 等长的向量列表。
-        """
-        return [self._embed_one(text) for text in texts]
-
-    def _embed_one(self, text: str) -> list[float]:
-        """单条文本 → 归一化散列向量。"""
-        vector = [0.0] * self.dim
-        if not text:
-            vector[0] = 1.0
-            return vector
-        for index, char in enumerate(text):
-            bucket = (ord(char) * 131 + index) % self.dim
-            vector[bucket] += 1.0
-        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-        return [value / norm for value in vector]
-
-
 class HttpEmbedder:
     """OpenAI 兼容 /v1/embeddings。"""
 
@@ -104,7 +72,7 @@ class HttpEmbedder:
               138 段要 631～833s，超过客户端读超时后整批作废，而服务端仍会把那批算完
               ——白等一轮还占着编码锁。批大小取服务端 BATCH_SIZE 的整数倍，
               服务端内部分批与整批发一致，算出来的向量不变。
-        应用场景：EMBEDDER_KIND=http；入库整库与在线单条查询都走这里。
+        应用场景：入库整库与在线单条查询都走这里。
         输入：texts — 知识块或查询正文。
         输出：向量列表，顺序与 texts 一致。
         异常：HTTP 非 200 → 向上抛。
@@ -295,8 +263,8 @@ class LanceVectorStore:
             raise ValueError(f"块数 {len(chunks)} 与向量数 {len(vectors)} 不一致")
         if _is_writing_source(source):
             raise ValueError(f"来源名不能以 {WRITING_MARKER} 结尾：{source}")
-        # 首次建表也要过这一关：以前 create_table 分支不校验 dim，256 维的 hash 抢跑建表后
-        # 1024 维的 bge-m3 再也写不进去，只能删库重入（TODO P1·11）
+        # 首次建表也要过这一关：以前 create_table 分支不校验 dim，错维数抢跑建表后
+        # 换模型再也写不进去，只能删库重入（TODO P1·11）
         _check_vectors(vectors, dim)
         rows = self._rows_from_chunks(chunks, vectors, embedder_name)
         names = self.db.table_names()

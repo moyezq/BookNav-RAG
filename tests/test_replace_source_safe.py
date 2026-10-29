@@ -29,7 +29,7 @@ def _chunk(chunk_id: str, text: str = "旧正文。") -> dict:
 def test_暂存add失败时旧来源仍在(work_dir, monkeypatch):
     """模拟写入暂存行失败：正式来源一行都不能少。"""
     store = LanceVectorStore(work_dir / "db")
-    store.replace_source("手册", [_chunk("手册-0001")], [[1.0, 0.0]], "hash", 2)
+    store.replace_source("手册", [_chunk("手册-0001")], [[1.0, 0.0]], "stub", 2)
     assert store.count_source_rows("手册") == 1
 
     def boom(self, table, rows):
@@ -42,7 +42,7 @@ def test_暂存add失败时旧来源仍在(work_dir, monkeypatch):
             "手册",
             [_chunk("手册-0001", "新正文。")],
             [[0.0, 1.0]],
-            "hash",
+            "stub",
             2,
         )
 
@@ -53,12 +53,12 @@ def test_暂存add失败时旧来源仍在(work_dir, monkeypatch):
 def test_正常替换后没有暂存行(work_dir):
     """走完全程后正式来源更新，暂存来源为 0。"""
     store = LanceVectorStore(work_dir / "db")
-    store.replace_source("手册", [_chunk("手册-0001")], [[1.0, 0.0]], "hash", 2)
+    store.replace_source("手册", [_chunk("手册-0001")], [[1.0, 0.0]], "stub", 2)
     store.replace_source(
         "手册",
         [_chunk("手册-0001", "新正文。"), _chunk("手册-0002", "第二块。")],
         [[0.0, 1.0], [1.0, 1.0]],
-        "hash",
+        "stub",
         2,
     )
     assert store.count_source_rows("手册") == 2

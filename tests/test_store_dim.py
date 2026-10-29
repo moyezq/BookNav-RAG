@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-首次建表的维数校验：256 维的 hash 抢跑一次，整库就锁死。
+首次建表的维数校验：错维数抢跑一次，整库就锁死。
 
 职责：锁定 backend/offline/vector/store.py::LanceVectorStore.replace_source 的两件事——
       1. 首次建表（表还不存在）时，声明维数与实际向量长度不符 → ValueError，且不留半截表；
       2. 已经建过 256 维的表之后再写 1024 维 → ValueError 同时报出两个维数（指向「删库重入库」）。
-      为什么要有这条：create_table 分支以前完全不校验，hash（EMBED_DIM=256）抢跑建表后，
+      为什么要有这条：create_table 分支以前完全不校验，错维数抢跑建表后，
       bge-m3 的 1024 维再也写不进去，只能删 backend/data/lancedb 全量重入。
       真库、真 LanceDB，需要写文件的目录用 work_dir（沙箱里 tmp_path 用不了）。
 
@@ -39,7 +39,7 @@ def test_首次建表时声明维数与向量不符就报错(work_dir):
     chunks = [_chunk("手册-0001")]
 
     with pytest.raises(ValueError) as excinfo:
-        store.replace_source("手册", chunks, [[1.0, 0.0]], "hash", 4)
+        store.replace_source("手册", chunks, [[1.0, 0.0]], "stub", 4)
 
     assert "维数" in str(excinfo.value)
     assert store.db.table_names() == []
@@ -51,16 +51,16 @@ def test_向量长度不一致就报错(work_dir):
     chunks = [_chunk("手册-0001"), _chunk("手册-0002")]
 
     with pytest.raises(ValueError) as excinfo:
-        store.replace_source("手册", chunks, [[1.0, 0.0], [1.0, 0.0, 0.0]], "hash", 2)
+        store.replace_source("手册", chunks, [[1.0, 0.0], [1.0, 0.0, 0.0]], "stub", 2)
 
     assert "长度不一致" in str(excinfo.value)
 
 
 def test_先256维后1024维时报出两个维数(work_dir):
-    """hash 抢跑的真实代价：第二次写入必须说清「表内 256、本次 1024、删库重入」。"""
+    """错维数抢跑的真实代价：第二次写入必须说清「表内 256、本次 1024、删库重入」。"""
     store = LanceVectorStore(work_dir / "db")
     chunks = [_chunk("手册-0001")]
-    store.replace_source("手册", chunks, [[0.0] * 256], "hash", 256)
+    store.replace_source("手册", chunks, [[0.0] * 256], "stub", 256)
 
     with pytest.raises(ValueError) as excinfo:
         store.replace_source("手册", chunks, [[0.0] * 1024], "bge-m3", 1024)

@@ -25,6 +25,7 @@ Agent 可以：勾选已完成、在对应节补可能的后续方向。改已�
 
 - [ ] 决策模型（Jev 式）接进意图识别与拒答，一次前向出多个类型化判断；选型见 [modelselection.md](modelselection.md)
 - [ ] 非 PDF 源（Office / 纯文本 / URL）入库，现在只抽 PDF
+- [ ] 重排层接交叉编码器，对召回候选换序后再截 TOP_K
 
 ## 项目缺陷未修
 

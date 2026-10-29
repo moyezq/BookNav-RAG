@@ -41,7 +41,7 @@ backend/offline/extract/            抽取层：一份源 → 可分块原文。
 
 backend/offline/vector/             向量层：可分块原文 → LanceDB chunks 表。HTTP 调 8030。  已实现
 ├── chunk.py                有目录则按标题拼块；页码块级。  已实现
-├── store.py                按来源写入；Hash / HTTP 客户端同文件。  已实现
+├── store.py                按来源写入；HTTP 客户端同文件。  已实现
 └── entrance.py             读可分块原文，切批 embedding，写库成功后才写 step4。  已实现
 ```
 
@@ -57,7 +57,7 @@ backend/online/
 ├── intent/                 分类、改写 / 跟进补全、标签候选。历史只进本层。  已实现
 ├── filter/                 来源强制筛选；标签按命中条数加权。  已实现
 ├── recall/                 装库、混合检索、词面兜底。不拆文件。  已实现
-├── rerank/                 截 TOP_K（不换序），再并同节邻块。  已实现
+├── rerank/                 截 TOP_K（不换序），再并同节邻块。交叉编码器未做。  已实现
 ├── prompt/                 命中 → 提示变量与 citations。  已实现
 └── generate/               闲聊 / 拒答 / 按命中生成。  已实现
 
@@ -102,7 +102,6 @@ tests/                      纯函数与替身，不调 LLM、不调 8030。  �
 **暂时不做**（目标留预留位置，不进当前排期）：
 
 - 入库后 ask 进程 reload：启动仍 load 一次。
-- 交叉编码器重排：重排节点只截断，不换序。
 - Agent 学习沙箱：永不接提问口。
 - kev08 接进意图识别（闲聊 / 结束 / 查库）：目录在 `service/kev08/`，本阶段不调用、不进 `start.py`。结束是对话收尾，不是召回后的拒答。
 - 拆共享 Chat 客户端：`chat_text` 仍住在生成包。

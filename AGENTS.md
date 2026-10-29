@@ -6,7 +6,7 @@
 
 ## 禁令
 
-- 端口从 8030 连号：向量 8030、问答 8031、Vite 8032、可选 VLM 8033、预备 kev08 8034。不要写回 8081 / 8090 / 5173 / 8080。
+- 端口从 8030 连号：向量 8030、问答 8031、Vite 8032、预备 kev08 8034。不要写回 8081 / 8090 / 5173 / 8080。
 - `service/kev08/` 用它自己的 `pyproject.toml` 与 `.venv`。不要把 kev 的 torch 装进本仓环境，不要 `import` 进提问口，不要塞进 `start.py`。
 - 只读本仓 `.env`：`backend.conf.apply_env()` 是唯一读取点。不要读别的仓的 `.env`。
 - 产品服务从仓库根 `uv run python start.py`，或 `uv run python -m service.embed.server` / `uv run python -m backend.online.server`。不要 `python service/embed/server.py` 或 `python backend/online/server.py`（`sys.path` 会指到子目录）。

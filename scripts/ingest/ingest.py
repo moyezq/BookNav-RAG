@@ -20,7 +20,7 @@
     5. write_chunkable — → chunkable_source.json。
     6. index_chunks — 可分块原文 → step4_chunks.json 与 LanceDB chunks 表。
   输入：backend/data/result/<stem>/raw_pages.json。PROCESS_ONLY 非空则只跑名单里的那几份。
-  前置：已跑 extract_pdf.py；python -m service.embed.server 已起（EMBEDDER_KIND=http）。
+  前置：已跑 extract_pdf.py；python -m service.embed.server 已起。
   产出：每来源一份 chunkable_source.json、step4_chunks.json；向量写入 backend/data/lancedb。
   对外：report_empty_tags。
   跑法：仓库根 uv run python scripts/ingest/ingest.py

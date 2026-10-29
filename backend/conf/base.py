@@ -41,13 +41,11 @@ MAX_DOC_TOKENS = 1800
 # 入口：列出可分块原文时跳过调试问答落盘目录
 SKIP_DIR_NAMES = frozenset({"qa"})
 
-# 嵌入客户端：http 调向量模型服务；hash 只把流程跑通，不是语义检索
-EMBEDDER_KIND = "http"
-EMBED_DIM = 256
+# 嵌入客户端：调向量模型服务 8030。8030 挂了时提问口走 BM25，不另做假向量。
 EMBED_MODEL_NAME = "bge-m3"
 # 首次建表前的期望维数（embedder 名 → 维数）。没登记的名字只校验「声明维数 == 实际向量维数」。
-# hash 用 256 抢跑建出表之后，bge-m3 的 1024 维再也写不进去，只能删库重入（TODO P1·11）。
-EMBED_DIM_BY_NAME = {"hash": EMBED_DIM, "bge-m3": 1024}
+# 错维数抢跑建表后换模型再也写不进去，只能删库重入（TODO P1·11）。
+EMBED_DIM_BY_NAME = {"bge-m3": 1024}
 
 # ---------------------------------------------------------------------------
 # 向量客户端（调 service 8030；服务端批大小与权重版本在 service/）

@@ -33,7 +33,7 @@ from backend.conf import (
     TOP_K,
 )
 from backend.offline.vector.chunk import estimate_tokens_by_chars
-from backend.offline.vector.store import Bm25Index, HashEmbedder, HttpEmbedder, LanceVectorStore
+from backend.offline.vector.store import Bm25Index, HttpEmbedder, LanceVectorStore
 from backend.online.filter.tags import empty_filters, source_matches, tag_match_count
 
 # 向量服务不可用时的异常集合；命中后走纯 BM25 兜底
@@ -160,7 +160,9 @@ class KnowledgeBase:
         """
         records, embedder_name, dim = self.vector_store.load_payload()
         if embedder_name == "hash":
-            print("警告 embedder=hash，不是语义检索。请用 EMBEDDER_KIND=http 重新入库")
+            raise ValueError(
+                "库里是已删除的 hash 占位向量，删掉 backend/data/lancedb 后重新入库"
+            )
 
         self.embedder_name = embedder_name
         self.dim = dim
@@ -343,10 +345,8 @@ class KnowledgeBase:
         return expanded
 
 
-def _build_embedder(embedder_name: str, dim: int):
-    """按库存名字选 Hash 或 HTTP。hash 不是语义模型。"""
-    if embedder_name == "hash":
-        return HashEmbedder(dim=dim)
+def _build_embedder(embedder_name: str, _dim: int):
+    """按库存名字构造 HTTP 客户端。表维数由 load 校验。"""
     return HttpEmbedder(EMBED_API_URL, embedder_name, EMBED_API_KEY, request_batch=EMBED_REQUEST_BATCH)
 
 

@@ -10,7 +10,7 @@
          拼不出 qa 目录之外的路径、没 session 时退回时间戳+随机 → 并发两问产出两个文件。
       为什么要有这条：2026-10-08 实测每问覆盖写 141KB 的 step2_hits.json，
       写盘抛 PermissionError 会穿透 router 变成 HTTP 500；并发时最后写者赢，调试信息本身是坏的。
-      不调 8030：假知识库 + hash 临时占位向量即可跑完 recall 这一层。
+      不调 8030：假知识库 + 替身 embedder 即可跑完 recall 这一层。
 
 应用场景：改 DEBUG_WRITE_QA、debug_name 或这两处写文件之后跑本文件。
 """
@@ -28,16 +28,24 @@ from backend.online.recall import retrieve
 class _FakeKnowledgeBase:
     """只要 embedder_name / dim / search 三个成员，够 retrieve_hits 跑完。"""
 
-    embedder_name = "hash"
-    dim = 2
+    embedder_name = "bge-m3"
+    dim = 1024
 
     def search(self, query_vector, filters, top_k, query_text=None) -> list:
         return []
 
 
+class _StubEmbedder:
+    """不打 8030，只让 retrieve_hits 走完 search。"""
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] * 1024 for _ in texts]
+
+
 def test_检索默认不写调试题材(work_dir, monkeypatch):
     """线上不传 write_debug 时不许碰磁盘。"""
     monkeypatch.setattr(retrieve, "QA_DIR", work_dir)
+    monkeypatch.setattr(retrieve, "_build_embedder", lambda *_args, **_kwargs: _StubEmbedder())
 
     assert inspect.signature(retrieve.retrieve_hits).parameters["write_debug"].default is False
 
@@ -119,6 +127,7 @@ def test_两个会话各写各的调试题材(work_dir, monkeypatch):
 def test_召回按给定的名字写调试文件(work_dir, monkeypatch):
     """召回层也用调用方给的调试题材名，不再写死 step2_hits.json。"""
     monkeypatch.setattr(retrieve, "QA_DIR", work_dir)
+    monkeypatch.setattr(retrieve, "_build_embedder", lambda *_args, **_kwargs: _StubEmbedder())
 
     hits = retrieve.retrieve_hits(
         _FakeKnowledgeBase(),
