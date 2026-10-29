@@ -1,0 +1,122 @@
+{
+  "notes": "kev08 意图识别模拟集：只根据用户问句三选一（闲聊 / 结束 / 查库），不带召回原文。expect 是人工标签。结束 = 用户在收尾这段对话，不是现网召回后的拒答；域外题仍走查库，由现网拒答层处理。state_prefix 给每条问句同一句助手身份。",
+  "labels": ["chitchat", "end", "retrieve"],
+  "state_prefix": "你是产品说明书问答助手。\n用户问：",
+  "question": {
+    "name": "route",
+    "type": "choice",
+    "instructions": "用户这句话接下来该怎么处理？只根据问句本身判断。",
+    "criteria": {
+      "chitchat": "打招呼、问你是谁、聊天气。对话还要继续，不是在说结束。",
+      "end": "致谢、告别、表示没问题了。用户在结束这段对话，不要再查库、不要当闲聊接着聊。",
+      "retrieve": "某个设备怎么操作、指示灯什么意思、充电、折叠展开、某环境能不能用。即使没点名哪份说明，也按要查产品说明处理。"
+    }
+  },
+  "samples": [
+    {
+      "id": "chitchat-01",
+      "group": "chitchat",
+      "question": "你好",
+      "expect": "chitchat",
+      "why": "套话问候，对话刚开始"
+    },
+    {
+      "id": "chitchat-02",
+      "group": "chitchat",
+      "question": "在吗",
+      "expect": "chitchat",
+      "why": "探活，对话还要继续"
+    },
+    {
+      "id": "chitchat-03",
+      "group": "chitchat",
+      "question": "你是谁",
+      "expect": "chitchat",
+      "why": "问助手身份，不是告别"
+    },
+    {
+      "id": "chitchat-04",
+      "group": "chitchat",
+      "question": "今天天气怎么样",
+      "expect": "chitchat",
+      "why": "天气闲聊"
+    },
+    {
+      "id": "chitchat-05",
+      "group": "chitchat",
+      "question": "嗨",
+      "expect": "chitchat",
+      "why": "套话问候"
+    },
+    {
+      "id": "end-01",
+      "group": "end",
+      "question": "谢谢",
+      "expect": "end",
+      "why": "致谢，收尾"
+    },
+    {
+      "id": "end-02",
+      "group": "end",
+      "question": "再见",
+      "expect": "end",
+      "why": "告别"
+    },
+    {
+      "id": "end-03",
+      "group": "end",
+      "question": "拜拜",
+      "expect": "end",
+      "why": "告别"
+    },
+    {
+      "id": "end-04",
+      "group": "end",
+      "question": "好了没事了",
+      "expect": "end",
+      "why": "表示可以结束"
+    },
+    {
+      "id": "end-05",
+      "group": "end",
+      "question": "先这样吧",
+      "expect": "end",
+      "why": "表示先停在这里"
+    },
+    {
+      "id": "retrieve-01",
+      "group": "retrieve",
+      "question": "支架怎么折叠",
+      "expect": "retrieve",
+      "why": "演示手册操作"
+    },
+    {
+      "id": "retrieve-02",
+      "group": "retrieve",
+      "question": "怎么把支架收起来",
+      "expect": "retrieve",
+      "why": "折叠的口语改写"
+    },
+    {
+      "id": "retrieve-03",
+      "group": "retrieve",
+      "question": "充电指示灯什么颜色表示充满",
+      "expect": "retrieve",
+      "why": "演示手册规格"
+    },
+    {
+      "id": "retrieve-04",
+      "group": "retrieve",
+      "question": "潮湿环境可以充电吗",
+      "expect": "retrieve",
+      "why": "演示手册安全"
+    },
+    {
+      "id": "retrieve-05",
+      "group": "retrieve",
+      "question": "支架怎么展开",
+      "expect": "retrieve",
+      "why": "演示手册操作"
+    }
+  ]
+}

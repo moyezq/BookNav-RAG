@@ -88,7 +88,7 @@ class Model:
         功能：state 前缀 + 每个问题的完整 row（row 形式，state 每行重复一遍）。
         应用场景：一次 /v1/systemone 请求。
         输入：state — 原文；questions — {问题名: {type, instructions, criteria?}}。
-        输出：(state token id, [{"ids": 行, "decide": 行内位置, "options": [行内位置…], "keys": 选项名, "type": 类型}])。
+        输出：(state token id, [{"name", "ids", "decide", "options", "keys", "type"}])。
         异常：state 超过 MAX_STATE → ValueError（调用方转 422）。
         """
         ids = {name: self.tok.convert_tokens_to_ids(token) for name, token in zip("qocd", SPECIAL[1:])}
@@ -97,14 +97,14 @@ class Model:
         if len(state_ids) > MAX_STATE:
             raise ValueError(f"state 是 {len(state_ids):,} 个 token，超过 {MAX_STATE:,} 上限")
         rows = []
-        for question in questions.values():
+        for name, question in questions.items():
             qtype = question["type"]
             if qtype == "noul":
                 criteria = question.get("criteria") or {}
                 texts = [option_text("no", criteria.get("false")), option_text("yes", criteria.get("true"))]
                 keys = ["false", "true"]
             elif qtype == "choice":
-                texts = [option_text(name, desc) for name, desc in question["criteria"].items()]
+                texts = [option_text(option, desc) for option, desc in question["criteria"].items()]
                 keys = list(question["criteria"])
             else:
                 raise ValueError(f"本实现只处理 noul / choice，收到 {qtype!r}")
@@ -116,18 +116,27 @@ class Model:
                 ends.append(len(branch) - 1)
             branch.append(ids["d"])
             row = state_ids + branch
-            rows.append({"ids": row, "decide": len(row) - 1, "options": [len(state_ids) + end for end in ends], "keys": keys, "type": qtype})
+            rows.append(
+                {
+                    "name": name,
+                    "ids": row,
+                    "decide": len(row) - 1,
+                    "options": [len(state_ids) + end for end in ends],
+                    "keys": keys,
+                    "type": qtype,
+                }
+            )
         return state_ids, rows
 
     @torch.no_grad()
-    def probabilities(self, state: str, questions: dict) -> tuple[list[torch.Tensor], int]:
+    def probabilities(self, state: str, questions: dict) -> tuple[list[torch.Tensor], int, list[dict]]:
         """
         一次请求里每个问题的选项概率。
 
         功能：逐行前向，取 `<|fim_suffix|>` 与各 `</opt>` 位置的隐状态，过指针头再 softmax。
         应用场景：/v1/systemone。
         输入：state / questions — 同 encode。
-        输出：(每个问题的概率张量, 本次输入 token 数)。
+        输出：(每个问题的概率张量, 本次输入 token 数, encode 的行——含 name / keys / type)。
         异常：编码失败（超长 / 未知类型）→ ValueError。
         """
         state_ids, rows = self.encode(state, questions)
@@ -146,7 +155,7 @@ class Model:
             h_options = hidden[torch.tensor(row["options"], device=self.device)]
             results.append(F.softmax(self.head(h_decide, h_options), -1).cpu())
             total_tokens += len(row["ids"]) - len(state_ids)
-        return results, total_tokens
+        return results, total_tokens, rows
 
 
 def load_model(run_dir: Path, base_dir: Path, device: str = "cpu", dtype: torch.dtype = torch.float32) -> Model:
@@ -188,15 +197,18 @@ def answer(model: Model, state: str, questions: dict) -> tuple[dict, int, float]
     """
     # 1. 前向：一行一个问题地打分，得每个问题的选项概率
     started = time.perf_counter()
-    probabilities, input_tokens = model.probabilities(state, questions)
+    probabilities, input_tokens, rows = model.probabilities(state, questions)
     # 2. 折成答案：noul 只取 p(true)；choice 取 argmax，confidence 按 k 等于 1 时归一到 1
+    #    选项名用 encode 写进行里的 keys，不要读请求体（请求只有 criteria，没有 keys）
     answers = {}
-    for (name, row), probs in zip(questions.items(), probabilities):
+    for row, probs in zip(rows, probabilities):
+        name = row["name"]
         if row["type"] == "noul":
             answers[name] = {"type": "noul", "noul": round(float(probs[1]), 4)}
             continue
-        k = len(row["keys"])
-        values = {key: round(float(p), 4) for key, p in zip(row["keys"], probs)}
+        keys = row["keys"]
+        k = len(keys)
+        values = {key: round(float(p), 4) for key, p in zip(keys, probs)}
         top = max(values, key=values.get)
         confidence = 1.0 if k == 1 else (values[top] - 1 / k) / (1 - 1 / k)
         answers[name] = {"type": "choice", "choice": top, "confidence": round(confidence, 4), "probabilities": values}

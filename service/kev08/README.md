@@ -10,7 +10,7 @@ cd service/kev08
 uv sync                                          # 建本目录 .venv（3.13），装 torch/transformers/peft/fastapi/uvicorn
 uv run python download_kev08.py                  # 下权重：models/kev-0.8b + models/base
 uv run python serve_kev08.py                     # 起服务 → http://127.0.0.1:8034（接口文档 /docs）
-uv run python probe_kev08.py                     # 另开终端：输入 → 模型视图 → 原始响应 → 解析算式
+uv run python probe_kev08.py                     # 另开终端：读 probe_intent.json，测闲聊/结束/查库准确率
 ```
 
 没有 `.venv`、缺包、缺权重，一律直接报错终止；脚本不往别处找解释器，也没有 fallback。
@@ -22,7 +22,8 @@ uv run python probe_kev08.py                     # 另开终端：输入 → 模
 | `model_kev08.py` | 推理本体：编码、前向、指针头打分、温度校准、组响应 |
 | `serve_kev08.py` | 只回 `POST /v1/systemone` 与 `GET /v1/models` 的 HTTP 服务（FastAPI + uvicorn） |
 | `download_kev08.py` | ModelScope 下权重，并把底座摆成 kev 认的 HF 缓存布局（硬链接） |
-| `probe_kev08.py` | 打印请求原文 / 模型看到的文本 / 响应原文 / 解析算式 |
+| `probe_kev08.py` | 读 `probe_intent.json`，测意图三分类（闲聊 / 结束 / 查库）准确率 |
+| `probe_intent.json` | 模拟问句与人工标签；改样本只改这一份 |
 
 推理链路（`model_kev08.py`，与上游 `kev/model.py` 同一套规则复刻）：
 

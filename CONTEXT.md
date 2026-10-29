@@ -31,8 +31,8 @@ _Avoid_: 标准架构、教材
 _Avoid_: 向量化层、把向量服务塞进 backend、offline/embed、把 embed 文件摊在 service/ 根上、向量层内部实现模型服务
 
 **决策模型预备服务**：
-`service/kev08/` 下独立环境的决策模型服务。本阶段不接提问口。
-_Avoid_: 把 kev08 塞进 start.py、把 kev 的 torch 装进本仓环境、scripts/kev08、向量模型服务
+`service/kev08/` 下独立环境的决策模型服务。预备替意图层做闲聊 / 结束 / 查库三分类。结束是用户在收尾对话，不是召回后的拒答。本阶段不接提问口，不看召回原文。
+_Avoid_: 把 kev08 塞进 start.py、把 kev 的 torch 装进本仓环境、scripts/kev08、向量模型服务、用 kev08 判召回够不够答、把结束当成拒答
 
 ### 离线
 

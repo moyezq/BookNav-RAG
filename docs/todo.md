@@ -23,7 +23,7 @@ Agent 可以：勾选已完成、在对应节补可能的后续方向。改已�
 
 ## 功能开发未实现
 
-- [ ] 决策模型（Jev 式）接进意图识别与拒答，一次前向出多个类型化判断；调研见 [decision-models.md](decision-models.md)
+- [ ] 决策模型（Jev 式）接进意图识别与拒答，一次前向出多个类型化判断；选型见 [modelselection.md](modelselection.md)
 - [ ] 非 PDF 源（Office / 纯文本 / URL）入库，现在路由只登记 PDF
 
 ## 项目缺陷未修
