@@ -1,37 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-LLM 生成层：LangChain `prompt | model | parser` 与拒答。
+生成层：拒答，以及按对话模型服务的返回写答案。
 
-使用前注意事项：密钥走 DEEPSEEK_API_KEY（进程环境变量或本仓 .env），不写进本仓。
+使用前注意事项：对话 HTTP 只走 service.deepseek.complete。本文件不组请求。
 """
 
 from __future__ import annotations
 
 import json
-import os
-
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+import traceback
 
 from backend.conf import (
-    CHAT_API_URL,
-    CHAT_MODEL_NAME,
-    CHAT_TIMEOUT_SEC,
+    CHAT_FAIL_TEXT,
     CHITCHAT_PROMPT,
     DEBUG_WRITE_QA,
-    LLM_MAX_TOKENS,
+    HANDBOOK_PROMPT,
     QA_DIR,
     REFUSE_MIN_SCORE,
     REFUSE_ON_LEXICAL_FALLBACK,
     REFUSE_TEXT,
 )
 from backend.offline.vector.store import tokenize
-from backend.online.prompt.assemble import HANDBOOK_PROMPT, assemble_handbook_inputs
-
-_PLAIN_PROMPT = ChatPromptTemplate.from_messages([("human", "{text}")])
-_CHITCHAT_PROMPT = ChatPromptTemplate.from_template(CHITCHAT_PROMPT)
-_PARSER = StrOutputParser()
+from backend.online.prompt.assemble import assemble_handbook_inputs
+from service.deepseek.http_client import ChatReply, HttpClient, ReplyKind
 
 
 def write_qa_result(name: str, payload) -> None:
@@ -39,66 +30,29 @@ def write_qa_result(name: str, payload) -> None:
     把 JSON 写到 backend/data/result/qa/<name>。
 
     功能：DEBUG_WRITE_QA 关时直接返回，响应路径不碰磁盘。
+          打开后写盘失败只打日志，不把这次问答变成 HTTP 500。
     应用场景：拒答、闲聊、检索生成三条分支的调试题材写入磁盘。
-    为什么默认关：每问覆盖写一次，写入磁盘抛 PermissionError 会穿透 router 变成 HTTP 500（TODO P1·20）。
+    为什么默认关：每问覆盖写一次，以前写入磁盘抛 PermissionError 会穿透 router 变成 HTTP 500。
     """
     if not DEBUG_WRITE_QA:
         return
-    QA_DIR.mkdir(parents=True, exist_ok=True)
-    path = QA_DIR / name
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        QA_DIR.mkdir(parents=True, exist_ok=True)
+        path = QA_DIR / name
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        print(traceback.format_exc())
+        return
     print(f"已写入 {path}")
 
 
-def _resolve_chat_api_key() -> str:
-    """DEEPSEEK_API_KEY（进程环境变量或本仓 .env）。"""
-    return os.getenv("DEEPSEEK_API_KEY", "").strip()
-
-
-def _chat_base_url() -> str:
-    """ChatOpenAI 要的是 /v1，不是完整 completions 路径。"""
-    url = CHAT_API_URL.strip().rstrip("/")
-    suffix = "/chat/completions"
-    if url.endswith(suffix):
-        return url[: -len(suffix)]
-    return url
-
-
-def _chat_model() -> ChatOpenAI:
-    """按 conf 常量组一个 DeepSeek 兼容的 Chat 模型。"""
-    api_key = _resolve_chat_api_key()
-    if not api_key:
-        raise RuntimeError("未配置 DEEPSEEK_API_KEY：设进程环境变量或写入本仓 .env")
-    return ChatOpenAI(
-        model=CHAT_MODEL_NAME,
-        api_key=api_key,
-        base_url=_chat_base_url(),
-        timeout=CHAT_TIMEOUT_SEC,
-        max_tokens=LLM_MAX_TOKENS,
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-
-
-def _invoke_text(prompt: ChatPromptTemplate, inputs: dict) -> str:
-    """跑 prompt | model | parser，失败收成 RuntimeError。"""
-    chain = prompt | _chat_model() | _PARSER
-    try:
-        return chain.invoke(inputs).strip()
-    except Exception as exc:
-        raise RuntimeError(f"Chat 失败: {type(exc).__name__}: {exc}") from exc
-
-
-def chat_text(prompt: str) -> str:
-    """
-    调 Chat，取助手文本。
-
-    功能：关思考模式；LCEL 产出字符串。
-    应用场景：改写预留实现、意图分类、闲聊、入库抽标签。
-    输入：prompt — user 正文。
-    输出：助手文本（已 strip）。
-    异常：缺 API key 或 Chat 失败 → RuntimeError。
-    """
-    return _invoke_text(_PLAIN_PROMPT, {"text": prompt})
+def _text_from_reply(reply: ChatReply) -> tuple[str, bool]:
+    """自然结束且有正文才当答案。其余 kind 用固定文案，不把这次提问变成 502。"""
+    if reply.kind == ReplyKind.STOP and reply.content.strip():
+        return reply.content.strip(), False
+    detail = reply.error_message or reply.content[:200]
+    print(f"生成未拿到正文：{reply.kind} {detail}".rstrip())
+    return CHAT_FAIL_TEXT, True
 
 
 def best_vector_score(hits: list[dict]):
@@ -171,7 +125,7 @@ def refuse_result(question: str, debug_name: str = "step3_answer.json") -> dict:
 
     功能：固定拒答文案，citations 为空列表。
     应用场景：在线图拒答分支。
-    输入：question — 用户原问；debug_name — 调试题材文件名（调用方按 session 组装，TODO P2·31）。
+    输入：question — 用户原问；debug_name — 调试题材文件名（调用方按 session 组装）。
     输出：{answer, citations}。
     """
     result = {"answer": REFUSE_TEXT, "citations": []}
@@ -184,14 +138,13 @@ def step3_chitchat(question: str, debug_name: str = "step3_answer.json") -> dict
     """
     闲聊生成：不检索，引用为空。
 
-    功能：CHITCHAT_PROMPT | model | parser；不是拒答。
+    功能：闲聊提示交给对话模型服务；不是拒答。只有 kind 为 stop 且有正文才采用。
     应用场景：在线图 route=chitchat 时跳过召回后的生成。
     输入：question — 用户原文；debug_name — 调试题材文件名。
-    输出：{answer, citations}，citations 为 []。
-    异常：缺 API key 或 Chat 失败 → RuntimeError。
+    输出：{answer, citations}，citations 为 []。Chat 失败时 answer 为固定文案，不抛。
     """
     print("[阶段3] 闲聊")
-    answer = _invoke_text(_CHITCHAT_PROMPT, {"question": question})
+    answer, _failed = _text_from_reply(HttpClient().complete(CHITCHAT_PROMPT.format(question=question)))
     result = {"answer": answer, "citations": []}
     write_qa_result(debug_name, {"question": question, "route": "chitchat", **result})
     print(f"问 → {question}")
@@ -208,16 +161,17 @@ def step3_generate(
     """
     按命中生成答案并附引用。
 
-    功能：组装变量后 HANDBOOK_PROMPT | model | parser；citations 由命中截片段。
+    功能：组装变量后交给对话模型服务；citations 由命中截片段。只有 kind 为 stop 且有正文才采用。
     应用场景：在线图生成节点。
     输入：hits — 召回结果；question — 用户原文；tags — 本轮筛选芯片，可空；
           debug_name — 调试题材文件名。
-    输出：生成结果 {answer, citations}。
-    异常：缺 API key 或 Chat 失败 → RuntimeError。
+    输出：生成结果 {answer, citations}。Chat 失败时 answer 为固定文案，citations 为空，不抛。
     """
     print("[阶段3] 生成")
     inputs, citations = assemble_handbook_inputs(hits, question, tags)
-    answer = _invoke_text(HANDBOOK_PROMPT, inputs)
+    answer, failed = _text_from_reply(HttpClient().complete(HANDBOOK_PROMPT.format(**inputs)))
+    if failed:
+        citations = []
     result = {"answer": answer, "citations": citations}
     write_qa_result(debug_name, {"question": question, **result})
     print(f"问 → {question}")

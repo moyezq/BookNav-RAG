@@ -6,10 +6,10 @@
       1. backend/online/recall/retrieve.py::retrieve_hits 的 write_debug 默认取 conf 的 DEBUG_WRITE_QA，
          默认 False → 不写调试题材；
       2. backend/online/generate/answer.py::write_qa_result 在 DEBUG_WRITE_QA 关时直接返回，打开才写进磁盘；
-      3. backend/online/graph.py::debug_name 组装文件名（P2·31）：带 session、客户端给的脏 session
+      3. backend/online/graph.py::debug_name 组装文件名：带 session、客户端给的脏 session
          拼不出 qa 目录之外的路径、没 session 时退回时间戳+随机 → 并发两问产出两个文件。
-      为什么要有这条：2026-10-08 实测每问覆盖写 141KB 的 step2_hits.json，
-      写盘抛 PermissionError 会穿透 router 变成 HTTP 500；并发时最后写者赢，调试信息本身是坏的。
+      为什么要有这条：2026-10-08 实测每问覆盖写 141KB 的 step2_hits.json。
+      写盘失败只打日志，不把这次问答变成 HTTP 500；文件名按 session 分开，避免最后写者赢。
       不调 8030：假知识库 + 替身 embedder 即可跑完 recall 这一层。
 
 应用场景：改 DEBUG_WRITE_QA、debug_name 或这两处写文件之后跑本文件。
@@ -75,7 +75,7 @@ def test_开关关闭时不写文件(work_dir, monkeypatch):
     assert not (work_dir / "step3_answer.json").exists()
 
 
-# ========== 文件名按 session 分（P2·31）：并发两问不再最后写者赢 ==========
+# ========== 文件名按 session 分：并发两问不再最后写者赢 ==========
 
 
 def test_调试题材名带session():
@@ -112,7 +112,7 @@ def test_超长session截断到上限():
 
 
 def test_两个会话各写各的调试题材(work_dir, monkeypatch):
-    """P2·31 的验收：同一进程两次提问产出两个文件，不是一个被覆盖的文件。"""
+    """同一进程两次提问产出两个文件，不是一个被覆盖的文件。"""
     monkeypatch.setattr(answer, "QA_DIR", work_dir)
     monkeypatch.setattr(answer, "DEBUG_WRITE_QA", True)
 
@@ -140,3 +140,17 @@ def test_召回按给定的名字写调试文件(work_dir, monkeypatch):
     assert hits == []
     assert (work_dir / "step2_hits_session-a.json").is_file()
     assert not (work_dir / "step2_hits.json").exists()
+
+
+def test_写盘失败只打日志不抛(work_dir, monkeypatch):
+    """打开调试后磁盘拒绝写入，函数返回，不把异常抛给问答。"""
+    from pathlib import Path
+
+    monkeypatch.setattr(answer, "QA_DIR", work_dir)
+    monkeypatch.setattr(answer, "DEBUG_WRITE_QA", True)
+
+    def _deny(self, *_args, **_kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "write_text", _deny)
+    answer.write_qa_result("step3_answer.json", {"question": "后视镜怎么折叠"})

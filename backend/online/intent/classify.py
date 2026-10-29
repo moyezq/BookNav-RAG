@@ -8,9 +8,9 @@ from __future__ import annotations
 import json
 import re
 
-from backend.online.filter.tags import empty_filters
-from backend.online.generate.answer import chat_text
 from backend.conf import CLASSIFY_PROMPT, HISTORY_MAX_TURNS, QUERY_TAG_PROMPT, TAG_LEXICAL_MIN_CHARS
+from backend.online.filter.tags import empty_filters
+from service.deepseek.http_client import HttpClient, ReplyKind
 
 ROUTE_RETRIEVE = "retrieve"
 ROUTE_CHITCHAT = "chitchat"
@@ -43,11 +43,6 @@ _CHITCHAT_EXACT = frozenset(
     }
 )
 _IDENTITY_MARKERS = (
-    "哪个品牌",
-    "哪个车",
-    "哪款车",
-    "什么品牌",
-    "什么车型",
     "哪份",
     "资料来源",
     "来源于",
@@ -104,7 +99,7 @@ def is_identity_question(question: str) -> bool:
     """
     本轮是否在问刚才答案对应的文档身份。
 
-    功能：命中来源/品牌/车型/哪份文档的问法。
+    功能：命中哪份文档、资料来源的问法。不把品牌、车型当身份追问。
     应用场景：有检索历史时强制 retrieve；沿用上一轮筛选。
     输入：question — 用户原文。
     输出：是否身份追问。
@@ -119,16 +114,21 @@ def _lexical_route(question: str) -> str:
     return ""
 
 
-def _parse_route_json(raw: str) -> str:
-    """从模型输出取出 route；认不出则 retrieve。"""
-    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
-    if match is None:
-        return ROUTE_RETRIEVE
-    payload = json.loads(match.group(0))
+def _route_from_payload(payload: dict) -> str:
+    """已解析对象里的 route。只有精确的 chitchat 算闲聊。"""
     route = str(payload.get("route", "")).strip()
     if route == ROUTE_CHITCHAT:
         return ROUTE_CHITCHAT
     return ROUTE_RETRIEVE
+
+
+def _parse_route_json(raw: str) -> str:
+    """从一段文本取出 route；认不出则 retrieve。活路径不走这里，见 classify_route。"""
+    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+    if match is None:
+        return ROUTE_RETRIEVE
+    payload = json.loads(match.group(0))
+    return _route_from_payload(payload)
 
 
 def classify_route(question: str, history: str = "") -> str:
@@ -147,17 +147,18 @@ def classify_route(question: str, history: str = "") -> str:
     if history and is_identity_question(question):
         print("意图分类 追问文档身份 retrieve")
         return ROUTE_RETRIEVE
-    try:
-        raw = chat_text(
-            CLASSIFY_PROMPT.format(
-                history_block=_history_block(history),
-                question=question,
-            )
-        )
-        route = _parse_route_json(raw)
-    except (RuntimeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        print(f"意图分类失败，按检索: {type(exc).__name__}: {exc}")
+    reply = HttpClient().complete(
+        CLASSIFY_PROMPT.format(
+            history_block=_history_block(history),
+            question=question,
+        ),
+        json_object=True,
+    )
+    if reply.kind != ReplyKind.STOP or reply.value is None:
+        detail = reply.error_message or reply.content[:200]
+        print(f"意图分类 {reply.kind}，按检索: {detail}".rstrip())
         return ROUTE_RETRIEVE
+    route = _route_from_payload(reply.value)
     print(f"意图分类 模型 {route}")
     return route
 
@@ -171,12 +172,8 @@ def _longest_catalog_hit(question: str, values: list[str]) -> str:
     return ""
 
 
-def _parse_filter_json(raw: str) -> dict:
-    """从模型输出取出 source 与 tags。认不出则全空。"""
-    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
-    if match is None:
-        return empty_filters()
-    payload = json.loads(match.group(0))
+def _filters_from_payload(payload: dict) -> dict:
+    """已解析对象里的 source 与 tags。缺字段则空。"""
     filters = empty_filters()
     if "source" in payload and payload["source"]:
         filters["source"] = str(payload["source"]).strip()
@@ -189,6 +186,14 @@ def _parse_filter_json(raw: str) -> dict:
                 rows.append({"field": field, "value": value})
         filters["tags"] = rows
     return filters
+
+
+def _parse_filter_json(raw: str) -> dict:
+    """从一段文本取出 source 与 tags。认不出则全空。活路径不走这里，见 infer_query_filters。"""
+    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+    if match is None:
+        return empty_filters()
+    return _filters_from_payload(json.loads(match.group(0)))
 
 
 def _constrain_to_catalog(filters: dict, catalog: dict) -> dict:
@@ -256,16 +261,21 @@ def infer_query_filters(question: str, catalog: dict, history: str = "") -> dict
         return empty_filters()
     pair_lines = [f"{tag['field']}={tag['value']}" for tag in catalog["tags"]]
     catalog_text = "来源: " + ", ".join(catalog["sources"]) + "\n标签: " + "; ".join(pair_lines)
+    reply = HttpClient().complete(
+        QUERY_TAG_PROMPT.format(
+            catalog=catalog_text,
+            history_block=_history_block(history),
+            question=question,
+        ),
+        json_object=True,
+    )
+    if reply.kind != ReplyKind.STOP or reply.value is None:
+        detail = reply.error_message or reply.content[:200]
+        print(f"意图标签 {reply.kind}，不过滤: {detail}".rstrip())
+        return empty_filters()
     try:
-        raw = chat_text(
-            QUERY_TAG_PROMPT.format(
-                catalog=catalog_text,
-                history_block=_history_block(history),
-                question=question,
-            )
-        )
-        inferred = _constrain_to_catalog(_parse_filter_json(raw), catalog)
-    except (RuntimeError, json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
+        inferred = _constrain_to_catalog(_filters_from_payload(reply.value), catalog)
+    except (TypeError, ValueError, KeyError) as exc:
         print(f"意图标签抽取失败，不过滤: {type(exc).__name__}: {exc}")
         return empty_filters()
     print(f"意图标签 模型 {inferred}")

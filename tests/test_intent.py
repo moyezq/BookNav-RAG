@@ -54,9 +54,12 @@ def test_套话整句判闲聊且不调模型():
 
 
 def test_身份追问识别():
-    """问资料来源/品牌/车型算身份追问，不是问助手本人。"""
+    """问哪份文档或资料来源算身份追问。品牌、车型、问助手本人都不算。"""
     assert is_identity_question("你的资料来源于哪个品牌") is True
+    assert is_identity_question("来自哪份手册") is True
     assert is_identity_question("你是谁") is False
+    assert is_identity_question("什么车型") is False
+    assert is_identity_question("哪个品牌") is False
 
 
 def test_问句归一化去尾部标点():
@@ -105,7 +108,7 @@ def test_词面匹配取最长的那个来源名():
 
 
 def test_词面匹配要求问句逐字包含来源名():
-    """已知局限（P2·23）：用户说「汉EV手册」匹配不到，只能说全名。"""
+    """已知局限：用户说「汉EV手册」匹配不到，只能说全名。"""
     assert _longest_catalog_hit("汉EV手册里后视镜怎么折叠", CATALOG["sources"]) == ""
 
 
@@ -133,10 +136,10 @@ def test_词面筛选忽略标签值里的空格():
 
 
 def test_词面筛选只说了标签值的一部分就不命中():
-    """已知局限（TODO P1·34）：用户只说「问界新M5」，库里的值是「问界 新M5 增程版」→ 落空。
+    """已知局限：用户只说「问界新M5」，库里的值是「问界 新M5 增程版」→ 落空。
 
     这一路只做**加权**、不强制筛选，落空只少一点加分；要更宽就得改成前缀/子串匹配，
-    那是 ADR-0035 的判据变更，先记在 P1·34，不在本轮私自改。
+    那是 ADR-0035 的判据变更。
     """
     catalog = {"sources": [], "tags": [{"field": "车型", "value": "问界 新M5 增程版"}]}
 

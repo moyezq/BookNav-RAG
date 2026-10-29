@@ -188,7 +188,7 @@ def clean_page_text(text: str, strip_images: bool = True) -> str:
 
     功能：**段边界保留**——页内空行仍是空行（`\\n\\n`），段内换行压成一个空格。
           分段累积分块（split_doc_text_into_chunks 按 `\\n\\n` 切）靠的就是这个边界；
-          清洗时把换行一律压平，会让「按段累积分块」永不生效（P0·6）。
+          清洗时把换行一律压平，会让「按段累积分块」永不生效。
     应用场景：assign_content_to_catalogue 按目录分页前逐页清洗。
     输入：text — 该页原始 markdown；strip_images — 是否去掉 markdown 图片。
     输出：段间是空行、段内没有换行的页正文；清洗后为空则空串。

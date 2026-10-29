@@ -4,7 +4,7 @@
 
 使用前注意事项：来源仍是文档身份，不写入 tags。字段名随文档变，不预置品牌/车型。抽不出则为 []，
 但**要说出来**（哪一步抽空的、模型原始输出前 200 字），别让「没有标签的文档」混在「入库成功」里。
-抠 JSON 用花括号配对逐段试解析，不用贪婪正则（多对象输出会被整段框住 → 解析必失败）。
+活路径只认对话模型服务给出的一个 JSON 对象。花括号配对仍留给直接喂字符串的解析函数。
 对外：TagEnrich。
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from backend.online.generate.answer import chat_text
+from service.deepseek.http_client import HttpClient, ReplyKind
 
 INGEST_TAG_CHARS = 4000
 INGEST_TAG_PAGES = 8
@@ -91,10 +91,10 @@ def _parse_tag_json(raw: str, source_name: str) -> list[dict]:
 
     功能：逐段候选 JSON 试解析，取**第一个**含非空 tags 列表的对象；来源身份、空项、重复项丢掉；
           最多 INGEST_TAG_MAX 条；全都解析不出来则返回 []（不抛）。
-    应用场景：TagEnrich.infer 解析模型输出。
+    应用场景：直接喂一段字符串时。TagEnrich.infer 只认服务返回的对象，不把原文再扫一遍。
     输入：raw — 模型原始输出（可能有「思考」文字、代码围栏或第二个 JSON）；source_name — 文档身份。
     输出：[{field, value}, ...]；认不出则 []。
-    为什么不用贪婪正则（TODO P1·12）：`re.search(r"\\{.*\\}", raw, DOTALL)` 在多对象输出上从第一个 `{`
+    为什么不用贪婪正则：`re.search(r"\\{.*\\}", raw, DOTALL)` 在多对象输出上从第一个 `{`
       一直框到最后一个 `}`，json.loads 必失败 → 整个 tags 变 [] 而入库照样算成功。
     """
     payload = None
@@ -107,6 +107,13 @@ def _parse_tag_json(raw: str, source_name: str) -> list[dict]:
             payload = parsed
             break
     if payload is None:
+        return []
+    return _tags_from_object(payload, source_name)
+
+
+def _tags_from_object(payload: dict, source_name: str) -> list[dict]:
+    """从一个已解析对象取出 tags。来源身份、空项、重复项丢掉。"""
+    if not isinstance(payload.get("tags"), list):
         return []
     rows = []
     seen = set()
@@ -147,7 +154,7 @@ class TagEnrich:
         """
         从知识正文抽出过滤标签。
 
-        功能：调 Chat；不要来源身份；失败或解析不出则 []，并且**把原因打出来**（抽空不是静默降级）。
+        功能：调对话模型服务；不要来源身份；不是一个带 tags 的对象则 []，并且**把原因打出来**。
         应用场景：写可分块原文时写入 tags。
         输入：sample_text — 正文原文片段；source_name — 文档身份。
         输出：[{field, value}, ...]，抽不出则为 []。
@@ -156,26 +163,34 @@ class TagEnrich:
         if not sample:
             print("入库标签：正文为空，tags=[]（这份来源不会按标签加权）")
             return []
-        try:
-            raw = chat_text(
-                INGEST_TAG_PROMPT.format(
-                    max_tags=INGEST_TAG_MAX,
-                    source=source_name,
-                    sample=sample,
-                )
-            )
-        except (RuntimeError, TypeError, ValueError, KeyError) as exc:
-            print(
-                f"入库标签抽取失败，tags=[]（这份来源不会按标签加权）："
-                f"{type(exc).__name__}: {exc}"
-            )
-            return []
-        tags = _parse_tag_json(raw, source_name)
-        if not tags:
-            # 解析不出来时把模型输出前 200 字打出来：不然「入库成功 + 没有标签」看不出是哪一步坏的
+        reply = HttpClient().complete(
+            INGEST_TAG_PROMPT.format(
+                max_tags=INGEST_TAG_MAX,
+                source=source_name,
+                sample=sample,
+            ),
+            json_object=True,
+        )
+        if reply.kind == ReplyKind.JSON_INVALID:
+            raw = reply.content or ""
             print(
                 f"入库标签解析不出 tags，tags=[]（这份来源不会按标签加权）："
-                f"原始输出 {len(raw or '')} 字，前 200 字 {((raw or '')[:200])!r}"
+                f"原始输出 {len(raw)} 字，前 200 字 {raw[:200]!r}"
+            )
+            return []
+        if reply.kind != ReplyKind.STOP or not isinstance(reply.value, dict):
+            detail = reply.error_message or reply.content[:200]
+            print(
+                f"入库标签抽取失败，tags=[]（这份来源不会按标签加权）："
+                f"{reply.kind} {detail}".rstrip()
+            )
+            return []
+        tags = _tags_from_object(reply.value, source_name)
+        if not tags:
+            raw = reply.content or ""
+            print(
+                f"入库标签解析不出 tags，tags=[]（这份来源不会按标签加权）："
+                f"原始输出 {len(raw)} 字，前 200 字 {raw[:200]!r}"
             )
             return []
         print(f"入库标签 tags={len(tags)} 条：{tags}")

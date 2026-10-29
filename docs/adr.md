@@ -30,9 +30,9 @@
 
 把约定格式的文档送进一份知识库，再按检索作答。输入查询文本，输出答案与引用。对照附录只作研究材料。不 fork 产品仓。不做管理台、任务队列、登录鉴权。
 
-## ADR-0010 · 2026-09-28 · 在线主路径用 LangGraph，生成用 LangChain
+## ADR-0010 · 2026-10-29 · 在线主路径用 LangGraph
 
-在线图是确定性节点链。生成节点用 LangChain `prompt | model | parser`。`create_agent` / `create_deep_agent` 只进 `scripts/` 的学习预留位置，不接进提问口。检索不是 Tool。
+在线图是确定性节点链。对话模型 HTTP 只在 `service/deepseek`，生成层不再自持客户端。`create_agent` / `create_deep_agent` 只进 `scripts/` 的学习预留位置，不接进提问口。检索不是 Tool。
 
 ## ADR-0011 · 2026-10-28 · 代码按离线层与在线层分目录
 
@@ -136,9 +136,9 @@ ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`�
 
 依赖写在 `pyproject.toml`。安装与启动走 `uv sync` / `uv run`。
 
-## ADR-0038 · 2026-10-28 · 仓库按 backend / frontend / docs / service 分地盘
+## ADR-0038 · 2026-10-29 · 仓库按 backend / frontend / docs / service 分地盘
 
-前后端同仓后，仓库根不再直接摊架构层。选定：离线抽取与在线问答进 `backend/`（内部仍按 offline / online 分层，ADR-0011；`conf/` 与 `data/` 也只给后端用）；检索门面仍是 `frontend/`；文档仍是 `docs/`；独立进程服务进 `service/`，按服务分子目录——`embed/` 是主路径向量服务（ADR-0018，不读 `backend/conf`），`kev08/` 是预备的决策模型服务（自带 pyproject，torch 版本与本仓向量服务无交集，不接提问口、不进 `start.py`）。`scripts/`、`tests/`、`start.py`、`.env` 留仓库根。不把 embed 塞进 backend。
+前后端同仓后，仓库根不再直接摊架构层。选定：离线抽取与在线问答进 `backend/`（内部仍按 offline / online 分层，ADR-0011；`conf/` 与 `data/` 也只给后端用）；检索门面仍是 `frontend/`；文档仍是 `docs/`；独立进程服务进 `service/`，按服务分子目录——`embed/` 是主路径向量服务（ADR-0018，不读 `backend/conf`），`kev08/` 是预备的决策模型服务（自带 pyproject，torch 版本与本仓向量服务无交集）。本阶段不接提问口、不进 `start.py`；后续计划是接进意图识别与拒答，接线时仍不把 torch 装进本仓环境。`scripts/`、`tests/`、`start.py`、`.env` 留仓库根。不把 embed 塞进 backend。
 
 ## ADR-0039 · 2026-10-29 · pymupdf4llm 产出落盘为原始页
 
@@ -151,3 +151,7 @@ ROOT 与层、模块的开关、阈值、提示词都进 `backend/conf/base.py`�
 ## ADR-0041 · 2026-10-29 · 去掉 Hash 占位向量
 
 HashEmbedder 不能给 bge-m3 库做问答兜底（维数与表内名字都对不上），也不能提高检索精度。8030 挂了时提问口已经走纯 BM25。选定：删除 HashEmbedder 与 `EMBEDDER_KIND`；入库只调 8030。旧 hash 库 load 时报错，须删 `backend/data/lancedb` 后重入。
+
+## ADR-0042 · 2026-10-29 · 对话模型只有 service/deepseek 一个调用方
+
+离线抽标签和在线意图、生成都要调 DeepSeek。客户端若留在生成包，抽取层就得 import 在线层。选定：唯一调用方是 `service/deepseek/http_client.py` 里的 `HttpClient`，不另开端口，不进 `start.py`，不读 `backend/conf`。返回按官方非流式 Chat Completions 分成 kind，调用方按 kind 分支。不发流式。思考关闭。被否的备选是：各模块自己发 HTTP；继续用 LangChain 只取字符串，从而丢掉 `finish_reason`。

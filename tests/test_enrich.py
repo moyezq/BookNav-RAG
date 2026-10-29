@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-入库标签抽取的解析与「抽空看得见」：锁定 P1·12 的两半。
+入库标签抽取的解析与「抽空看得见」。
 
 职责：锁定 backend/offline/extract/enrich.py 的三件事——
       1. 抠 JSON 用花括号配对，不贪婪：模型输出「思考 + JSON」「两个 JSON 对象」都要能拿到 tags；
@@ -21,7 +21,7 @@ import json
 from backend.offline.extract import enrich
 from scripts.ingest.ingest import report_empty_tags
 
-# ========== 解析模型输出（P1·12 前半） ==========
+# ========== 解析模型输出 ==========
 
 
 def test_思考文字包着JSON也能解析():
@@ -96,12 +96,23 @@ def test_最多留八条():
     assert tags[0] == {"field": "字段1", "value": "值1"}
 
 
-# ========== 抽空要可见（P1·12 后半） ==========
+# ========== 抽空要可见 ==========
 
 
 def test_解析失败时打出原因与模型原始输出(capsys, monkeypatch):
     """抽空不是静默降级：要能看出是哪一步空的、模型到底给了什么。"""
-    monkeypatch.setattr(enrich, "chat_text", lambda prompt: "这份手册我抽不出标签")
+    from service.deepseek.http_client import ChatReply, ReplyKind
+
+    def _bad(self, prompt: str, *, json_object: bool = False) -> ChatReply:
+        return ChatReply(
+            kind=ReplyKind.JSON_INVALID,
+            content="这份手册我抽不出标签",
+            finish_reason="stop",
+            status_code=200,
+            error_message="不是 JSON 对象",
+        )
+
+    monkeypatch.setattr(enrich.HttpClient, "complete", _bad)
 
     tags = enrich.TagEnrich().infer("正文片段", "某手册")
     printed = capsys.readouterr().out
@@ -114,16 +125,21 @@ def test_解析失败时打出原因与模型原始输出(capsys, monkeypatch):
 def test_模型调用失败也打出来(capsys, monkeypatch):
     """调用失败与解析失败是两件事，报错要能区分。"""
 
-    def _boom(prompt: str) -> str:
-        raise RuntimeError("未配置 DEEPSEEK_API_KEY")
+    from service.deepseek.http_client import ChatReply, ReplyKind
 
-    monkeypatch.setattr(enrich, "chat_text", _boom)
+    def _missing(self, prompt: str, *, json_object: bool = False) -> ChatReply:
+        return ChatReply(
+            kind=ReplyKind.NOT_CONFIGURED,
+            error_message="未配置 DEEPSEEK_API_KEY",
+        )
+
+    monkeypatch.setattr(enrich.HttpClient, "complete", _missing)
 
     tags = enrich.TagEnrich().infer("正文片段", "某手册")
     printed = capsys.readouterr().out
 
     assert tags == []
-    assert "RuntimeError" in printed
+    assert "not_configured" in printed
     assert "解析不出 tags" not in printed
 
 

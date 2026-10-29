@@ -34,7 +34,7 @@ _encode_lock = threading.Lock()
 
 
 def _weight_files() -> list[Path]:
-    """仓内已有的权重文件；两种发布形态都认（TODO P2·17）。"""
+    """仓内已有的权重文件；两种发布形态都认。"""
     return [MODEL_DIR / name for name in _WEIGHT_FILE_NAMES if (MODEL_DIR / name).is_file()]
 
 

@@ -5,7 +5,7 @@
 职责：锁定 backend/online/graph.py 里两件与「评测到底测了什么」直接相关的事——
       1. 过滤对象归一化：dict 与 HTTP 层的 Pydantic 对象都要认（这是 O5 那类静默出错的来源）；
       2. ask_once_core 的闲聊分支必须在召回之前返回：注入 chitchat 时不许碰知识库。
-         这一条就是 P0·3 验收「注入 chitchat 后评测必须失败」的机内版本。
+         这一条就是「注入 chitchat 后评测必须失败」的机内版本。
 
 应用场景：改 graph.py 之后跑 python -m pytest tests/test_graph_path.py。
 """
@@ -58,7 +58,7 @@ def test_归一化对None给空过滤():
     assert _normalize_filters(None) == {"source": "", "tags": []}
 
 
-# ========== 闲聊分支不碰检索（P0·3 的机内版本） ==========
+# ========== 闲聊分支不碰检索 ==========
 
 
 def test_注入闲聊时在召回之前返回():

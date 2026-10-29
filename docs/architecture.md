@@ -17,9 +17,8 @@
 - 主路径 Agent / Deep Agent / GraphRAG：RAG 是检索后生成，不是模型选工具。
 - RBAC、任务队列、管理 UI、产品级 HTTP API 网关：一个轻量 POST + 一页对话。
 - 把样本领域写成约定字段（`brand` / `car` 列）。
-- 评测台产品：只留最小评测口。
+- 评测台产品。最小评测口保留；「答案是否被引用支撑」是后续计划，见暂时不做。
 - 自建解析微服务；把 anyurl2text / MinerU / anydoc 源码引进本仓。
-- 按格式堆源适配器。
 - KV 条目、精确匹配库、从正文拆「字段：值」。
 - 音视频入库。图片 OCR。
 - 在 `extract/` 或 `vector/` 写入库总编排；把向量模型服务实现放进 `backend/offline/` 或 `backend/online/`。
@@ -77,7 +76,10 @@ service/embed/                  向量模型服务：入库和提问 HTTP 调 80
 ├── download_embed.py           权重下载到同目录 models/。  已实现
 └── models/                     本地 embedding 权重（不进仓）。  已实现
 
-service/kev08/                  决策模型预备服务：独立 uv 环境与权重，不接提问口。  暂时不做
+service/deepseek/               对话模型服务：DeepSeek 非流式补全的唯一调用方。不是本机进程，不进 start.py。  已实现
+└── http_client.py              类 HttpClient：非流式请求，并按官方返回分类。  已实现
+
+service/kev08/                  决策模型预备服务：独立 uv 环境与权重，本阶段不接提问口。  暂时不做
 ```
 
 ## 5. 仓库根
@@ -88,6 +90,7 @@ backend/conf/               ROOT（backend 目录）、层开关与阈值。  �
 backend/data/               源 PDF、抽取产物、LanceDB。  已实现
 frontend/                   检索门面。  已实现
 service/embed/              向量模型服务。  已实现
+service/deepseek/           对话模型服务。不是本机进程。  已实现
 service/kev08/              决策模型预备服务。  暂时不做
 docs/                       目标架构与 ADR。  已实现
 start.py                    一键起 8030 / 8031 / 8032。  已实现
@@ -103,5 +106,7 @@ tests/                      纯函数与替身，不调 LLM、不调 8030。  �
 
 - 入库后 ask 进程 reload：启动仍 load 一次。
 - Agent 学习沙箱：永不接提问口。
-- kev08 接进意图识别（闲聊 / 结束 / 查库）：目录在 `service/kev08/`，本阶段不调用、不进 `start.py`。结束是对话收尾，不是召回后的拒答。
-- 拆共享 Chat 客户端：`chat_text` 仍住在生成包。
+- kev08 接进意图识别与拒答：目录在 `service/kev08/`，本阶段不调用、不进 `start.py`。结束仍是对话收尾，和拒答是两次判断。
+- 非 PDF 源（Office / 纯文本 / Markdown / URL）入库：本阶段只抽 PDF。做的时候加 class 和脚本步骤，不预留空目录。
+- 评测增加「答案是否被引用支撑」：现评测口停在生成前，只判命中、拒答与闲聊。
+- 会话在重启后仍保留：现为进程内 MemorySaver，重启即丢。

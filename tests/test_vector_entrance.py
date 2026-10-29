@@ -112,7 +112,7 @@ def test_写进磁盘的step4就是写进库的那批块(work_dir, monkeypatch, 
 
 
 def test_入口拦住与期望维数不符的embedder(work_dir, monkeypatch, fake_store):
-    """conf 登记的期望维数对不上就报错：别把错维度的表建出来，建出来只能删库重入（P1·11）。"""
+    """conf 登记的期望维数对不上就报错：别把错维度的表建出来，建出来只能删库重入。"""
     fake_store["step4_path"] = work_dir / "step4_chunks.json"
     monkeypatch.setattr(entrance, "make_embedder", lambda: _FakeEmbedder())
     monkeypatch.setattr(entrance, "EMBED_DIM_BY_NAME", {"fake": 4})

@@ -5,8 +5,8 @@
 
 import re
 
-from backend.online.generate.answer import chat_text
 from backend.conf import REWRITE_PROMPT, STANDALONE_PROMPT, USE_REWRITE
+from service.deepseek.http_client import HttpClient, ReplyKind
 
 _FOLLOWUP_TOKENS = ("它", "它们", "这个", "那个", "这些", "那些", "刚才", "刚刚")
 
@@ -31,6 +31,15 @@ def _looks_like_followup(question: str) -> bool:
     return any(token in stripped for token in _FOLLOWUP_TOKENS)
 
 
+def _completed_text(prompt: str) -> str:
+    """只要自然结束的非空正文。其它 kind 抛 RuntimeError，上层改用用户原文。"""
+    reply = HttpClient().complete(prompt)
+    if reply.kind == ReplyKind.STOP and reply.content.strip():
+        return reply.content.strip()
+    detail = reply.error_message or reply.content[:200]
+    raise RuntimeError(f"{reply.kind} {detail}".strip())
+
+
 def rewrite_query(text: str, history: str = "") -> str:
     """
     Query 改写预留实现：只替换 text。
@@ -41,7 +50,7 @@ def rewrite_query(text: str, history: str = "") -> str:
     输出：检索用 text。
     """
     if USE_REWRITE:
-        rewritten = chat_text(
+        rewritten = _completed_text(
             REWRITE_PROMPT.format(
                 history_block=_history_block(history),
                 question=text,
@@ -50,7 +59,7 @@ def rewrite_query(text: str, history: str = "") -> str:
         print(f"改写 {text!r} → {rewritten!r}")
         return rewritten
     if history and _looks_like_followup(text):
-        rewritten = chat_text(
+        rewritten = _completed_text(
             STANDALONE_PROMPT.format(
                 history_block=_history_block(history),
                 question=text,

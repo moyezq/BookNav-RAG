@@ -18,7 +18,7 @@ from backend.conf.base import REPO_ROOT, ROOT
 from backend.conf.base import (  # noqa: F401  — 供 from backend.conf import 使用
     CANDIDATE_FLOOR,
     CANDIDATE_MULTIPLIER,
-    CHAT_TIMEOUT_SEC,
+    CHAT_FAIL_TEXT,
     CHITCHAT_PROMPT,
     CLASSIFY_PROMPT,
     DEBUG_TAG_MAX_CHARS,
@@ -33,7 +33,6 @@ from backend.conf.base import (  # noqa: F401  — 供 from backend.conf import 
     HISTORY_MAX_TURNS,
     SESSION_ID_MAX_CHARS,
     SESSION_TURNS_MAX,
-    LLM_MAX_TOKENS,
     MAX_DOC_TOKENS,
     QUERY_TAG_PROMPT,
     REFUSE_MIN_SCORE,
@@ -93,7 +92,7 @@ def apply_env() -> None:
 
     这里以前还会读 `ANYURL2TEXT_ENV` 指向的**另一个仓的 .env** 当兜底（抽取委托给 anyurl2text
     时代的共用密钥做法）。抽取解耦后（ADR-0034）那半已无理由，还会把外仓的所有键注进本进程；
-    2026-10-10 拆掉，见 TODO P2·25。
+    2026-10-10 拆掉。
     """
     local = REPO_ROOT / ".env"
     if local.is_file():
@@ -110,6 +109,6 @@ apply_env()
 
 EMBED_API_URL = os.getenv("EMBED_API_URL", "http://127.0.0.1:8030/v1/embeddings")
 EMBED_API_KEY = os.getenv("EMBED_API_KEY", "")
-CHAT_API_URL = os.getenv("CHAT_API_URL", "https://api.deepseek.com/v1/chat/completions")
-CHAT_MODEL_NAME = os.getenv("CHAT_MODEL_NAME", "deepseek-flash")
+CHAT_API_URL = os.getenv("CHAT_API_URL", "").strip()
+CHAT_MODEL_NAME = os.getenv("CHAT_MODEL_NAME", "").strip()
 

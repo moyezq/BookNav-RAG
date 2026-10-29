@@ -137,6 +137,14 @@ def _merge_catalogue_neighbors(siblings: list[dict], center_id: str, max_tokens:
     }
 
 
+def _chunk_id_order(row: dict) -> tuple[int, int | str]:
+    """同节邻块的排序键：id 末段是数字则按整数，否则整段字符串排在数字之后。"""
+    suffix = str(row["id"]).rsplit("-", 1)[-1]
+    if suffix.isdigit():
+        return (0, int(suffix))
+    return (1, str(row["id"]))
+
+
 class KnowledgeBase:
     """一份逻辑知识库：backend/data/lancedb 的 chunks 表。"""
 
@@ -299,7 +307,7 @@ class KnowledgeBase:
         重排后按目录标题把同节邻块并进命中正文。
 
         功能：空标题不并；同一标题只保留窗口里最先出现的那条，正文换成邻块拼接。
-             不改命中字段名。
+             邻块按 id 末段整数排序。不改命中字段名。
         应用场景：重排节点截 TOP_K 之后、拒答与组提示之前；评测口对齐生成窗口。
         输入：hits — 已截到 TOP_K 的检索命中。
         输出：同形状命中，条数可能更少（同标题去重）。
@@ -315,7 +323,7 @@ class KnowledgeBase:
                 grouped[key] = []
             grouped[key].append(record)
         for key in grouped:
-            grouped[key].sort(key=lambda row: row["id"])
+            grouped[key].sort(key=_chunk_id_order)
 
         seen_titles = set()
         expanded = []
@@ -365,7 +373,7 @@ def retrieve_hits(
     输入：knowledge_base — 已 load；question — 查询 text；filters — 空则不过滤；
           write_debug — 是否写调试题材，默认取 conf 的 DEBUG_WRITE_QA（默认关，
           响应路径不碰磁盘：每问写 141KB 曾把写盘失败变成 HTTP 500）；
-          debug_name — 调试题材文件名，调用方按 session 组装，避免并发两问互相覆盖（TODO P2·31）。
+          debug_name — 调试题材文件名，调用方按 session 组装，避免并发两问互相覆盖。
     输出：检索命中列表（混合检索约 candidate_n 条，不是 TOP_K）。
     """
     resolved = filters if filters is not None else empty_filters()

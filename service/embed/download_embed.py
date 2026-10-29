@@ -4,7 +4,7 @@
 职责：向量模型服务的权重准备，不启动 HTTP。跑完即退出。
 对外：__main__ 调 snapshot_download。
 前置：已 `uv sync`。
-锁定版本：revision 是本文件的 EMBED_MODEL_REVISION；留空则下默认分支并在日志里明说未锁定版本（TODO P2·17）。
+锁定版本：revision 是本文件的 EMBED_MODEL_REVISION；留空则下默认分支并在日志里明说未锁定版本。
 换权重：改本文件的 MODEL_ID / EMBED_MODEL_REVISION，以及 backend/conf/base.py 的 EMBED_MODEL_NAME / EMBED_DIM_BY_NAME，再跑一次。
 怎么跑：在仓库根 `uv run python service/embed/download_embed.py`。
 """

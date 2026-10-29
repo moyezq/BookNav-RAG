@@ -264,7 +264,7 @@ class LanceVectorStore:
         if _is_writing_source(source):
             raise ValueError(f"来源名不能以 {WRITING_MARKER} 结尾：{source}")
         # 首次建表也要过这一关：以前 create_table 分支不校验 dim，错维数抢跑建表后
-        # 换模型再也写不进去，只能删库重入（TODO P1·11）
+        # 换模型再也写不进去，只能删库重入
         _check_vectors(vectors, dim)
         rows = self._rows_from_chunks(chunks, vectors, embedder_name)
         names = self.db.table_names()

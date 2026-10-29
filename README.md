@@ -158,6 +158,7 @@ book-nav-rag/
 ├── frontend/                # 问答页（Vite）；视觉规范 DESIGN.md
 ├── service/
 │   ├── embed/               # 向量服务；入口 python -m service.embed.server；权重 embed/models（不进仓）
+│   ├── deepseek/            # 对话模型调用；不另开端口
 │   └── kev08/               # 决策模型预备服务；独立 uv 环境，不接提问口
 ├── scripts/                 # 入库 ingest/（抽页 + 入库 + 验收）、问答 ask/、评测 eval/
 └── docs/                    # 内部说明，日常使用不必读

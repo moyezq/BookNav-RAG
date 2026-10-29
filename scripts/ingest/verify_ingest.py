@@ -3,8 +3,8 @@
 
 职责：读 backend/data/result/<来源>/chunkable_source.json、step4_chunks.json 与 backend/data/lancedb 的 chunks 表，
       算出一组可核对的数字，对机械可证的不变量做断言并给出非零退出码。不写库，不调模型。
-      这是 P0·2：让已经发生的数据损坏从「靠人手动翻 JSON」变成「一条命令报出来」。
-      也是 P1·8：丢页不只报个数，还给每个丢页贴原因标签——「按设计丢的导航页 / 空页」
+      让已经发生的数据损坏从「靠人手动翻 JSON」变成「一条命令报出来」。
+      丢页不只报个数，还给每个丢页贴原因标签——「按设计丢的导航页 / 空页」
       与「真丢正文」必须分开算，否则正确丢掉的章扉页和目录截断丢的正文长得一模一样。
 
 原理（按系统流程）
@@ -14,16 +14,16 @@
   1. 抽取层产出 chunkable_source.json：pages 是源的真实页。查「源一共几页」。
   2. 分块产出 step4_chunks.json：每个知识块带 metadata.pages（声明页码）、metadata.part、metadata.catalogue_title。
      - **页覆盖**：块声明页的并集 vs 源全部页。差集就是「一个字都没进任何块」的源页。
-       这是静默故障（P1·8 治的就是这一类）：抽出来的正文被丢掉，不报错，引用和检索都少一块。
-      - **丢页原因**（P1·8）：差集里每一页再过一遍分类——空文本 / 清洗后为空 / 导航页
+       这是静默故障：抽出来的正文被丢掉，不报错，引用和检索都少一块。
+      - **丢页原因**：差集里每一页再过一遍分类——空文本 / 清洗后为空 / 导航页
         （目录、索引、章扉页）/ 首条目录项之前 / 区间内未分到页 / 这份来源没有目录区间。
         前两类与导航页是**按设计丢的**；「首条目录项之前」与「区间内未分到页」是**真丢正文**
         （页码偏移、目录截断、按目录分页漏 else 分支），计入 `MISSING_CONTENT_MAX` 阈值；
-        「没有目录区间」那一类指向 P2·13，单列待确认，不混进阈值。
+        「没有目录区间」那一类单列待确认，不混进阈值。
         另外把「判成章扉页却留着大段正文」的页记为**疑似误杀**：导航页判定用的
         「点线行 ≥5 且过半」是近似规则，正文页只要列了 5 条以上编号项就会被整页吃掉。
         它是启发式（表格行与短标题不算正文），只进待确认，不做硬断言。
-     - **页精度**：块级页码（P0·5）之后，同一节切出的每个子块只声明自己真正覆盖的页，
+     - **页精度**：块级页码之后，同一节切出的每个子块只声明自己真正覆盖的页，
        于是「part > 0 就是虚报」不再成立；硬断言换成**同一节的相邻 part 至多共享切分处那一页**，
        再加一条**同一页不得同时落在两个目录节里**。改前每个子块复制整节 pages，
        相邻 part 会重叠整节（3.21 倍），这一条照样报错；它同样不需要任何近似判断。
@@ -137,7 +137,7 @@ def token_stats(chunks: list[dict]) -> dict:
     块 token 分布的粗估统计。
 
     功能：用 estimate_tokens_by_chars 逐块估算，给出 min / 中位 / p90 / max。
-    应用场景：分块策略改动的效果对比（P0·6 的验收数字）。
+    应用场景：分块策略改动的效果对比。
     输入：chunks — 知识块列表。
     输出：{count, min, median, p90, max}。
     """
@@ -194,7 +194,7 @@ def classify_missing_pages(
     功能：按固定次序判一页为什么没进块——源页空 → 导航页（目录 / 索引 / 章扉页）→
           清洗后为空 → 这份来源根本没有目录区间 → 页码在首条目录项之前 → 区间内未分到页。
           只有「首条目录项之前」与「区间内未分到页」是**真丢正文**；
-          空页、导航页是按设计丢的，没有目录区间那一类指向 P2·13。
+          空页、导航页是按设计丢的，没有目录区间那一类单列。
     应用场景：check_ingest 的丢页告警；命令行报告。
     输入：source_obj — 可分块原文；missing — 没进任何块的页号列表；suspect_body_chars — 疑似误杀阈值。
     输出：{reasons, by_reason, counts, content_pages, front_matter_pages, hole_pages,
@@ -227,7 +227,7 @@ def classify_missing_pages(
             reasons[page_no] = REASON_EMPTY_CLEANED
             continue
         if first_start is None:
-            # 没有目录区间这一支本来就把 pages 写成 []（P2·13），不是按目录分页漏了
+            # 没有目录区间这一支本来就把 pages 写成 []，不是按目录分页漏了
             reasons[page_no] = REASON_NO_CATALOGUE
         elif page_no < first_start:
             reasons[page_no] = REASON_FRONT_MATTER
@@ -274,7 +274,7 @@ def check_ingest(
     """
     对一份来源的两个产出做全部检查。
 
-    功能：页覆盖、**丢页原因分类（P1·8）**、页精度（相邻 part 至多共享切分页、同一页不得跨节）、
+    功能：页覆盖、**丢页原因分类**、页精度（相邻 part 至多共享切分页、同一页不得跨节）、
           id 唯一性、token 分布、tags 唯一数。
     应用场景：命令行入口；pytest 直接调用（纯函数，不读盘）。
     输入：source_obj — 可分块原文；chunks — 知识块列表；
@@ -373,7 +373,7 @@ def check_ingest(
             f"{len(cross_section)} 页同时落在两个目录节里（assign_content_to_catalogue 归错）："
             f"{cross_section[:5]}"
         )
-    # 丢页（P1·8）：先分类再判。「按设计丢的导航页 / 空页」与「真丢正文」必须分开算，
+    # 丢页：先分类再判。「按设计丢的导航页 / 空页」与「真丢正文」必须分开算，
     # 只报一个「N 页有正文，需逐个确认」等于没有红线——正确丢的章扉页和丢掉的正文长得一样。
     content_pages = classification["content_pages"]
     if len(content_pages) > missing_content_max:
@@ -397,7 +397,7 @@ def check_ingest(
     if classification["no_catalogue_pages"]:
         problems.append(
             f"{len(classification['no_catalogue_pages'])} 页有正文但这份来源没有目录区间："
-            f"无目录时 pages 恒为 []（P2·13），不是按目录分页漏了"
+            f"无目录时 pages 恒为 []，不是按目录分页漏了"
         )
     if len(tag_combos) <= 1 and len(chunks) > 1:
         problems.append(f"tags 组合唯一数 = {len(tag_combos)}：文档级标签复制到每块，块级过滤零区分度")

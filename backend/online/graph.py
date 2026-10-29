@@ -47,7 +47,7 @@ def debug_name(base: str, session: str) -> str:
     功能：文件名 = `<stem>_<session>.<后缀>`；session 只留 [A-Za-z0-9_-] 且截到
           DEBUG_TAG_MAX_CHARS——它由客户端给，直接拼进文件名会写出 qa 目录之外
           （`../../x`、路径分隔符）。一个合法字符都没留下时退回「毫秒时间戳 + 4 位随机」，
-          于是没 session 的并发两问也各写各的，不再最后写者赢（TODO P2·31）。
+          于是没 session 的并发两问也各写各的，不再最后写者赢。
     应用场景：recall 与 generate 两个节点组装调试题材名；DEBUG_WRITE_QA 关着时没人用它。
     输入：base — 基名（如 step2_hits.json）；session — 会话标识，可空。
     输出：文件名（不含目录）。

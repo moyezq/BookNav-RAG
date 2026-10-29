@@ -47,7 +47,7 @@ flowchart TD
 
 `CatalogueBuild`：印刷目录**动态扫**：带表头的页 + 紧邻续页，连续 `EXTRACT_CATALOGUE_STOP_PAGES` 页不是目录页就停；硬上限 `EXTRACT_CATALOGUE_PREVIEW_PAGES`。有目录区间时方式名记 `handbook`，无目录记 `pdf`。
 
-`TagEnrich`：从正文抽出 `tags[{field, value}]`，最多 8 条；字段名随文档变，不预置。不把来源身份写成标签。抠 JSON 用花括号配对逐段试解析。抽空打原因与模型原始输出，入库汇总按名字单列，不许混进「成功 N」。实现上借 `backend.online.generate.answer.chat_text`。
+`TagEnrich`：从正文抽出 `tags[{field, value}]`，最多 8 条；字段名随文档变，不预置。不把来源身份写成标签。调用 `HttpClient.complete`，带 `json_object`。只有 kind 为 `stop` 且 `value` 是一个对象时才取 `tags`。`json_invalid` 与其它 kind 都得到 `[]`，并打出原因；入库汇总按名字单列，不许混进「成功 N」。现网一次返回就是一个对象，不再靠花括号配对从多段里挑。
 
 `ChunkableCollect` 把上面三样收成一份可分块原文。抽取层不写知识块、不写向量。下面形状以演示手册 `demo_handbook.pdf`（6 页）为准；真手册只是 `pages` 更长。
 
@@ -165,10 +165,10 @@ flowchart TD
 
 历史在 `turns` 里，只进入本层。`format_turns` 分类用全历史，改写只用检索轮；`HISTORY_MAX_TURNS` 截意图用历史，MemorySaver 里 turns 只留 `SESSION_TURNS_MAX`。
 
-- `classify_route`：`retrieve` 或 `chitchat`。有历史且问文档身份则 retrieve。闲聊不是拒答。
+- `classify_route`：`retrieve` 或 `chitchat`。有历史且问哪份文档或资料来源则 retrieve。不把品牌、车型当成身份问法。闲聊不是拒答。
 - `rewrite_query`：默认开。关掉且不像跟进则原样。跟进补全只吃检索轮，且问句要像指代（「它」「那个」「呢」）。
 - `infer_query_filters`：对照 `tag_catalog()` 给出 `{source, tags[{field, value}]}`。source 空串 = 不限来源；tags 空 = 不加权。问句字面命中目录值就直接返回（最短 `TAG_LEXICAL_MIN_CHARS`）；调用方 `filters` 非空则覆盖。没点名不要把库里仅有的那个值自动填上。
-- 提示词不假定汽车领域。分类 / 改写 / 标签同样借 `chat_text`。标签候选函数写在 `classify.py`，逻辑上属意图层。
+- 提示词不假定汽车领域。改写「原样输出」只覆盖来源、哪份文档，不写品牌、车型。分类、改写、在线抽标签都调 `HttpClient.complete`。分类和在线抽标签带 `json_object`；改写不带。分类只在 kind 为 `stop` 且 `value.route` 精确等于 `chitchat` 时走闲聊，其它 kind 按检索。在线标签同样只认这一个对象。现网带 `json_object` 时 content 就是一个对象，活路径不再用贪婪正则框多段。改写只采用 kind 为 `stop` 的非空正文，否则改用用户原文。标签候选函数写在 `classify.py`，逻辑上属意图层。
 
 ### 2.2 召回与过滤
 
@@ -191,17 +191,17 @@ retrieve_hits(改写后的 text, filters)
 - 两路 RRF 融合，截到候选窗口（`max(TOP_K × CANDIDATE_MULTIPLIER, CANDIDATE_FLOOR)`，默认 20）。不在这一层截 `TOP_K`。
 - 词面兜底：embedding 调不通（`EMBED_UNAVAILABLE`）时不把异常抛给上层，退化为纯 BM25，命中标 `lexical_fallback=True`。向量服务挂掉不许把整个问答口打死（闲聊仍 200）。
 
-调试题材由 `retrieve_hits(write_debug=)` 控制，默认取 `DEBUG_WRITE_QA`（默认关）。打开时写 `backend/data/result/qa/`，文件名带 session（只留 `[A-Za-z0-9_-]`、截到 `DEBUG_TAG_MAX_CHARS`）；评测与测试传 `False`。
+调试题材由 `retrieve_hits(write_debug=)` 控制，默认取 `DEBUG_WRITE_QA`（默认关）。打开时写 `backend/data/result/qa/`，写盘失败只打日志，这次问答仍返回。文件名带 session（只留 `[A-Za-z0-9_-]`、截到 `DEBUG_TAG_MAX_CHARS`）；评测与测试传 `False`。
 
 ### 2.3 重排
 
-`rerank_hits` 把候选截成 `TOP_K`，保持 RRF 顺序只截断，不换序。截完后 `expand_hits_by_catalogue`：按目录标题把同节邻块并进命中 `text` / `pages`，有 token 上限；空标题不并；同标题去重。不要从截断前的候选里新增命中 id。文件仍叫 `overlap.py`。
+`rerank_hits` 把候选截成 `TOP_K`，保持 RRF 顺序只截断，不换序。截完后 `expand_hits_by_catalogue`：按目录标题把同节邻块并进命中 `text` / `pages`，邻块按 id 末段整数排序，有 token 上限；空标题不并；同标题去重。不要从截断前的候选里新增命中 id。文件仍叫 `overlap.py`。
 
 ### 2.4 生成与拒答
 
-空命中拒答。`REFUSE_MIN_SCORE` 大于 0 时，最好的 `vector_score`（余弦）低于该值也拒。不看 RRF 融合分。词面兜底时另走一套：没有 `vector_score` 不等于有证据，`REFUSE_ON_LEXICAL_FALLBACK` 开着就要求命中里出现查询词。拒答文案 `REFUSE_TEXT`，`citations` 仍是列表（可空）。
+空命中拒答。`REFUSE_MIN_SCORE` 大于 0 时，最好的 `vector_score`（余弦）低于该值也拒。不看 RRF 融合分。词面兜底时另走一套：没有 `vector_score` 不等于有证据，`REFUSE_ON_LEXICAL_FALLBACK` 开着就要求命中里出现查询词。拒答文案 `REFUSE_TEXT`，`citations` 仍是列表（可空）。闲聊与按命中生成只把 kind 为 `stop` 且有正文的返回当答案。`length`（截断）、`http_error`、传输失败、未配置，都返回 `CHAT_FAIL_TEXT`，citations 为空，HTTP 仍是 200。不按原请求自动重试：同一 `max_tokens` 下 `length` 再打仍是 `length`。
 
-提示词组装：检索命中拼进提示，另带文档身份 `tags`（与芯片同源）用来回答来源 / 品牌 / 车型。操作和规格只根据原文片段。程序组装 `citations[{id, source, pages, snippet}]`，模型只写 `answer`。检索门面把引用放侧栏，由答案旁按钮选定。
+提示词组装：检索命中拼进提示，另带文档身份 `tags`（与芯片同源）用来回答来源、哪份文档，不把品牌、车型写进身份说明。操作和规格只根据原文片段。程序组装 `citations[{id, source, pages, snippet}]`，模型只写 `answer`。检索门面把引用放侧栏，由答案旁按钮选定。
 
 最小评测：正样本看 Hit@1 / Hit@`TOP_K`（期望来源，可再对页）；负样本看 `should_refuse`。`ROUTE_OVERRIDE="chitchat"` 注入后正样本必须全部未命中。
 
